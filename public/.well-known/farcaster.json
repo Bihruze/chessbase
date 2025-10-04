@@ -1,0 +1,37 @@
+{
+  "accountAssociation": {
+    "header": "",
+    "payload": "",
+    "signature": ""
+  },
+  "frame": {
+    "version": "1",
+    "name": "ChessBase",
+    "subtitle": "Fast Base-native chess duels",
+    "description": "Match with Base players or our bot and log every capture onchain.",
+    "homeUrl": "https://example.com",
+    "iconUrl": "https://example.com/icon.png",
+    "splashImageUrl": "https://example.com/splash.png",
+    "splashBackgroundColor": "#0B1F3A",
+    "primaryCategory": "gaming",
+    "tags": [
+      "chess",
+      "strategy",
+      "gaming",
+      "baseapp"
+    ],
+    "screenshotUrls": [
+      "https://example.com/screenshot-portrait.png"
+    ],
+    "heroImageUrl": "https://example.com/hero.png",
+    "tagline": "Capture, sign, share.",
+    "ogTitle": "ChessBase",
+    "ogDescription": "Every capture submits a Base transaction.",
+    "ogImageUrl": "https://example.com/og.png"
+  },
+  "baseBuilder": {
+    "allowedAddresses": [
+      "0x5E4006b6336D7aC719449d98590E6aEEa0c11447"
+    ]
+  }
+}
