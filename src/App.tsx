@@ -1,18 +1,23 @@
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Chessboard } from 'react-chessboard'
-import type { PieceDropHandlerArgs } from 'react-chessboard'
+import type { PieceDropHandlerArgs, PieceHandlerArgs, SquareHandlerArgs } from 'react-chessboard'
 import { useMiniKit } from '@coinbase/onchainkit/minikit'
-import { useAccount } from 'wagmi'
-import { ConnectWallet } from '@coinbase/onchainkit/wallet'
+import { useAccount, usePublicClient } from 'wagmi'
 import { Transaction, TransactionButton, TransactionToast } from '@coinbase/onchainkit/transaction'
-import { stringToHex, type Hex } from 'viem'
+import { encodeFunctionData, parseGwei, type Hex } from 'viem'
 import { useChessGame } from './hooks/useChessGame'
 import type { CaptureEvent } from './hooks/useChessGame'
+import { Leaderboard } from './components/Leaderboard'
+import { useLeaderboard } from './hooks/useLeaderboard'
 import { useMatchmaking } from './hooks/useMatchmaking'
-import { APP_NAME, APP_TAGLINE, APP_URL } from './config/constants'
+import { APP_NAME, APP_TAGLINE, APP_URL, DEFAULT_CAPTURE_CONTRACT } from './config/constants'
+import { shortenHex } from './utils/strings'
+import { selectEngineMove } from './utils/chessAi'
 import { env } from './config/env'
 import { preferredChain } from './lib/wagmi'
 import './App.css'
+import { WalletControls } from './components/WalletControls'
+import { chessBaseCapturesAbi } from './abi/chessBaseCaptures'
 
 const PIECE_SYMBOLS: Record<'white' | 'black', Record<string, string>> = {
   white: {
@@ -36,15 +41,6 @@ const PIECE_SYMBOLS: Record<'white' | 'black', Record<string, string>> = {
 const formatCaptureIcon = (piece: string, capturedColor: 'white' | 'black') => {
   const key = piece.toLowerCase()
   return PIECE_SYMBOLS[capturedColor][key] ?? '•'
-}
-
-const pieceValues: Record<string, number> = {
-  p: 1,
-  n: 3,
-  b: 3,
-  r: 5,
-  q: 9,
-  k: 100,
 }
 
 const inferCapturedColor = (piece?: string) => {
@@ -78,6 +74,7 @@ type PendingCapture = {
 
 type CaptureLogEntry = {
   id: string
+  player: string
   moveNumber: number
   san: string
   square: string
@@ -85,11 +82,6 @@ type CaptureLogEntry = {
   txHash: string
   timestamp: number
 }
-
-const shortenHex = (value: string, segment = 4) =>
-  value.length > segment * 2 + 2
-    ? `${value.slice(0, segment + 2)}…${value.slice(-segment)}`
-    : value
 
 const EXPLORERS: Record<number, string> = {
   8453: 'https://basescan.org/tx/',
@@ -101,12 +93,14 @@ const getExplorerTxUrl = (hash: string) => {
   return `${baseUrl}${hash}`
 }
 
+const formatTxHash = (value: string) => (value.startsWith('0x') ? shortenHex(value, 6) : value)
+
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as Hex
 
 function App() {
   const miniKit = useMiniKit()
   const { context, setMiniAppReady } = miniKit
-  const { address, isConnected } = useAccount()
+  const { address } = useAccount()
   const {
     position,
     turn,
@@ -128,12 +122,20 @@ function App() {
   const [captureLog, setCaptureLog] = useState<CaptureLogEntry[]>([])
   const [captureError, setCaptureError] = useState<string | null>(null)
   const captureKeyRef = useRef<string | null>(null)
+  const { leaderboard, mergeChainEntry } = useLeaderboard()
   const [boardOrientation, setBoardOrientation] = useState<'white' | 'black'>('white')
   const [boardSize, setBoardSize] = useState(360)
   const isSponsored = Boolean(env.onchainKitApiKey)
   const [shareHint, setShareHint] = useState<string | null>(null)
+  const [mateBanner, setMateBanner] = useState<{ text: string; variant: 'win' | 'loss' } | null>(
+    null,
+  )
   const [botDifficulty, setBotDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium')
-  const captureTarget = (env.captureTarget ?? ZERO_ADDRESS) as Hex
+  const [infoTab, setInfoTab] = useState<'moves' | 'leaderboard'>('moves')
+  const [moveHints, setMoveHints] = useState<Record<string, CSSProperties>>({})
+  const [selectedSquare, setSelectedSquare] = useState<string | null>(null)
+  const [hoveredSquare, setHoveredSquare] = useState<string | null>(null)
+  const captureTarget = (env.captureTarget ?? DEFAULT_CAPTURE_CONTRACT) as Hex
 
   const handleOpponentMove = useCallback(
     (san: string, fen: string) => {
@@ -145,18 +147,37 @@ function App() {
     [applyMoveBySan],
   )
 
-  const match = useMatchmaking({ onOpponentMove: handleOpponentMove })
-  const playerColor = match.playerColor
-  const opponentType = match.opponentType
+  const {
+    playerColor,
+    opponentType,
+    status: matchStatus,
+    emitMove,
+    startBotMatch,
+  } = useMatchmaking({ onOpponentMove: handleOpponentMove })
   const botTurnColor = playerColor === 'white' ? 'b' : 'w'
-  const matchStatus = match.status
-  const emitMove = match.emitMove
 
-  const handleCaptureComplete = useCallback((entry: CaptureLogEntry) => {
-    setCaptureLog((prev) => [entry, ...prev])
-    setPendingCapture(null)
-    setCaptureError(null)
-  }, [])
+  const handleCaptureComplete = useCallback(
+    (entry: CaptureLogEntry) => {
+      setCaptureLog((prev) => {
+        const next = [entry, ...prev]
+        const playerCaptures = next.filter(
+          (item) => item.player.toLowerCase() === entry.player.toLowerCase(),
+        )
+        mergeChainEntry({
+          player: entry.player,
+          totalCaptures: playerCaptures.length,
+          lastMoveNumber: entry.moveNumber,
+          lastCaptureAt: entry.timestamp,
+          lastSan: entry.san,
+          lastSquare: entry.square,
+        })
+        return next
+      })
+      setPendingCapture(null)
+      setCaptureError(null)
+    },
+    [mergeChainEntry],
+  )
 
   const handleCaptureError = useCallback((message: string) => {
     setCaptureError(message)
@@ -198,6 +219,115 @@ function App() {
     }
   }, [])
 
+  const clearMoveHints = useCallback(() => {
+    setMoveHints({})
+    setSelectedSquare(null)
+    setHoveredSquare(null)
+  }, [])
+
+  const buildMoveHintStyles = useCallback(
+    (fromSquare: string) => {
+      const legalMoves = getLegalMoves()
+      const relevant = legalMoves.filter((move) => move.from === fromSquare)
+      if (relevant.length === 0) {
+        return {}
+      }
+      const hints: Record<string, CSSProperties> = {
+        [fromSquare]: {
+          boxShadow: 'inset 0 0 0 4px rgba(149, 38, 211, 0.9)',
+          background: 'radial-gradient(circle, rgba(214,92,255,0.18) 42%, transparent 48%)',
+        },
+      }
+      relevant.forEach((move) => {
+        const isCapture = Boolean(move.captured)
+        hints[move.to] = isCapture
+          ? {
+              boxShadow: 'inset 0 0 0 3px rgba(217, 70, 239, 0.88)',
+              background: 'radial-gradient(circle, rgba(217,70,239,0.52) 34%, transparent 40%)',
+            }
+          : {
+              boxShadow: 'inset 0 0 0 3px rgba(168, 85, 247, 0.88)',
+              background: 'radial-gradient(circle, rgba(168,85,247,0.32) 24%, transparent 30%)',
+            }
+      })
+      return hints
+    },
+    [getLegalMoves],
+  )
+
+  const showMoveHints = useCallback(
+    (fromSquare: string, source: 'select' | 'hover' = 'select') => {
+      const hints = buildMoveHintStyles(fromSquare)
+      if (Object.keys(hints).length === 0) {
+        if (source === 'select') {
+          clearMoveHints()
+        } else if (!selectedSquare) {
+          setHoveredSquare(null)
+          setMoveHints({})
+        }
+        return
+      }
+      setMoveHints(hints)
+      if (source === 'select') {
+        setSelectedSquare(fromSquare)
+        setHoveredSquare(null)
+      } else if (!selectedSquare) {
+        setHoveredSquare(fromSquare)
+      }
+    },
+    [buildMoveHintStyles, clearMoveHints, selectedSquare],
+  )
+
+  const handlePieceDragBegin = useCallback(
+    ({ square }: PieceHandlerArgs) => {
+      if (square) {
+        showMoveHints(square, 'select')
+      }
+    },
+    [showMoveHints],
+  )
+
+  const handlePieceDragEnd = useCallback(() => {
+    clearMoveHints()
+  }, [clearMoveHints])
+
+  const handleSquareClick = useCallback(
+    ({ square }: SquareHandlerArgs) => {
+      if (selectedSquare === square) {
+        clearMoveHints()
+        return
+      }
+      showMoveHints(square, 'select')
+    },
+    [clearMoveHints, selectedSquare, showMoveHints],
+  )
+
+  const handleSquareMouseOver = useCallback(
+    ({ square, piece }: SquareHandlerArgs) => {
+      if (!square || !piece || selectedSquare) {
+        return
+      }
+      const pieceCode = piece.pieceType ?? ''
+      const pieceColor = pieceCode.startsWith('w') ? 'white' : 'black'
+      if (pieceColor !== playerColor) {
+        return
+      }
+      showMoveHints(square, 'hover')
+    },
+    [playerColor, selectedSquare, showMoveHints],
+  )
+
+  const handleSquareMouseOut = useCallback(
+    ({ square }: SquareHandlerArgs) => {
+      if (!hoveredSquare || hoveredSquare !== square || selectedSquare) {
+        return
+      }
+      setHoveredSquare(null)
+      setMoveHints({})
+    },
+    [hoveredSquare, selectedSquare],
+  )
+
   useEffect(() => {
     setMiniAppReady().catch(() => undefined)
   }, [setMiniAppReady])
@@ -222,10 +352,6 @@ function App() {
   }, [playerColor])
 
   useEffect(() => {
-    setBoardOrientation(playerColor)
-  }, [playerColor])
-
-  useEffect(() => {
     if (!shareHint) {
       return
     }
@@ -244,41 +370,29 @@ function App() {
       return
     }
 
-    const moves = getLegalMoves()
-    if (!moves.length) {
-      return
+    const depthMap: Record<typeof botDifficulty, number> = {
+      easy: 1,
+      medium: 2,
+      hard: 3,
     }
 
-    const randomChoice = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)]
-
-    const selectMove = () => {
-      if (botDifficulty === 'easy') {
-        return randomChoice(moves)
-      }
-      if (botDifficulty === 'medium') {
-        const captureMoves = moves.filter((move) => move.captured)
-        return randomChoice(captureMoves.length ? captureMoves : moves)
-      }
-      const scored = moves.map((move) => {
-        const capturedValue = pieceValues[(move.captured ?? '').toLowerCase()] ?? 0
-        const checkBonus = move.san.includes('#') ? 6 : move.san.endsWith('+') ? 2 : 0
-        return { move, score: capturedValue + checkBonus }
-      })
-      const bestScore = Math.max(...scored.map((entry) => entry.score))
-      const bestMoves = scored.filter((entry) => entry.score === bestScore)
-      return randomChoice(bestMoves).move
+    const delayMap: Record<typeof botDifficulty, number> = {
+      easy: 900,
+      medium: 700,
+      hard: 520,
     }
 
-    const delay = botDifficulty === 'hard' ? 600 : botDifficulty === 'medium' ? 800 : 950
     const timer = window.setTimeout(() => {
-      const choice = selectMove()
-      if (choice) {
-        applyMoveBySan(choice.san)
+      const latestFen = getCurrentFen()
+      const engineMove = selectEngineMove(latestFen, botTurnColor, depthMap[botDifficulty])
+      if (!engineMove) {
+        return
       }
-    }, delay)
+      applyMoveBySan(engineMove.san)
+    }, delayMap[botDifficulty])
 
     return () => window.clearTimeout(timer)
-  }, [applyMoveBySan, botDifficulty, botTurnColor, getLegalMoves, matchStatus, opponentType, turn])
+  }, [applyMoveBySan, botDifficulty, botTurnColor, getCurrentFen, matchStatus, opponentType, turn])
 
   useEffect(() => {
     if (!lastCapture || lastCapture.capturedBy !== playerColor) {
@@ -333,11 +447,37 @@ function App() {
 
   const activeColorLabel = turn === 'w' ? 'White' : 'Black'
   const waitingColorLabel = turn === 'w' ? 'Black' : 'White'
+  const opponentColorLabel = playerColor === 'white' ? 'Black' : 'White'
+  const playerColorLabel = playerColor === 'white' ? 'White' : 'Black'
   const isGameOver = status.isCheckmate || status.isDraw || status.isStalemate
+
+  useEffect(() => {
+    if (!status.isCheckmate) {
+      setMateBanner(null)
+      return
+    }
+    const playerDeliveredMate = waitingColorLabel === playerColorLabel
+    setMateBanner(
+      playerDeliveredMate
+        ? { text: 'Checkmate! You won 🎉', variant: 'win' }
+        : { text: 'Checkmate. Opponent wins.', variant: 'loss' },
+    )
+  }, [playerColorLabel, status.isCheckmate, waitingColorLabel])
+
+  useEffect(() => {
+    if (!mateBanner) {
+      return
+    }
+    const timer = setTimeout(() => setMateBanner(null), 3200)
+    return () => clearTimeout(timer)
+  }, [mateBanner])
 
   const statusCopy = useMemo(() => {
     if (status.isCheckmate) {
-      return `${waitingColorLabel} wins by checkmate`
+      const playerDeliveredMate = waitingColorLabel === playerColorLabel
+      return playerDeliveredMate
+        ? 'Checkmate! You delivered mate.'
+        : 'Checkmate! You were checkmated.'
     }
     if (status.isStalemate) {
       return 'Draw • Stalemate'
@@ -349,7 +489,7 @@ function App() {
       return `${activeColorLabel} is in check`
     }
     return `${activeColorLabel} to move`
-  }, [activeColorLabel, waitingColorLabel, status])
+  }, [activeColorLabel, playerColorLabel, status, waitingColorLabel])
 
   const userDisplayName =
     context?.user?.displayName ?? context?.user?.username ?? 'You'
@@ -363,9 +503,6 @@ function App() {
     }
     return 'Matched with a Base player'
   }, [matchStatus, opponentType])
-  const opponentColorLabel = playerColor === 'white' ? 'Black' : 'White'
-  const playerColorLabel = playerColor === 'white' ? 'White' : 'Black'
-
   const moveRows = useMemo(() => {
     const rows: Array<{ move: number; white?: string; black?: string }> = []
     for (let i = 0; i < history.length; i += 2) {
@@ -395,8 +532,9 @@ function App() {
 
   const handlePlayerDrop = useCallback(
     (args: PieceDropHandlerArgs) => {
+      clearMoveHints()
       if (matchStatus === 'searching') {
-        return false
+        startBotMatch()
       }
 
       const pieceCode = args.piece?.pieceType ?? ''
@@ -427,7 +565,7 @@ function App() {
 
       return true
     },
-    [emitMove, getCurrentFen, getLatestSan, matchStatus, onPieceDrop, opponentType, playerColor, turn],
+    [clearMoveHints, emitMove, getCurrentFen, getLatestSan, matchStatus, onPieceDrop, opponentType, playerColor, startBotMatch, turn],
   )
 
   const highlightStyles = useMemo<Record<string, CSSProperties> | undefined>(() => {
@@ -437,13 +575,18 @@ function App() {
     const { from, to } = lastMoveSquares
     return {
       [from]: {
-        boxShadow: 'inset 0 0 0 4px rgba(87, 82, 255, 0.38)',
+        boxShadow: 'inset 0 0 0 4px rgba(168, 85, 247, 0.35)',
       },
       [to]: {
-        boxShadow: 'inset 0 0 0 4px rgba(87, 82, 255, 0.55)',
+        boxShadow: 'inset 0 0 0 4px rgba(168, 85, 247, 0.55)',
       },
     }
   }, [lastMoveSquares])
+
+  const squareStyles = useMemo(() => ({
+    ...(highlightStyles ?? {}),
+    ...moveHints,
+  }), [highlightStyles, moveHints])
 
   const entryPointCopy = buildEntryPointCopy(context?.location?.type)
   const chessboardOptions = useMemo(
@@ -458,14 +601,31 @@ function App() {
         borderRadius: '20px',
         boxShadow: '0 12px 28px rgba(12, 24, 63, 0.45)',
       } satisfies CSSProperties,
-      squareStyles: highlightStyles ?? {},
+      squareStyles,
       animationDurationInMs: 180,
       showNotation: true,
       allowDragOffBoard: false,
       allowDragging: matchStatus !== 'searching',
       onPieceDrop: handlePlayerDrop,
+      onPieceDragBegin: handlePieceDragBegin,
+      onPieceDragEnd: handlePieceDragEnd,
+      onSquareClick: handleSquareClick,
+      onMouseOverSquare: handleSquareMouseOver,
+      onMouseOutSquare: handleSquareMouseOut,
     }),
-    [boardOrientation, boardSize, handlePlayerDrop, highlightStyles, matchStatus, position],
+    [
+      boardOrientation,
+      boardSize,
+      handlePieceDragBegin,
+      handlePieceDragEnd,
+      handleSquareMouseOut,
+      handleSquareMouseOver,
+      handlePlayerDrop,
+      handleSquareClick,
+      matchStatus,
+      position,
+      squareStyles,
+    ],
   )
   const lastCaptureCopy = useMemo(() => {
     if (pendingCapture) {
@@ -506,13 +666,7 @@ function App() {
                 <p className="app__tagline">{APP_TAGLINE}</p>
               </div>
             </div>
-            {address && isConnected ? (
-              <div className="wallet-chip">
-                <span title={address}>Connected {shortenHex(address, 5)}</span>
-              </div>
-            ) : (
-              <ConnectWallet disconnectedLabel="Connect wallet" />
-            )}
+            <WalletControls />
           </div>
           <div className="app__status">
             <span className={isGameOver ? 'status status--done' : 'status'}>
@@ -562,6 +716,14 @@ function App() {
               </div>
             )}
           </div>
+          {mateBanner ? (
+            <div
+              className={`board-card__banner board-card__banner--${mateBanner.variant}`}
+              role="status"
+            >
+              {mateBanner.text}
+            </div>
+          ) : null}
 
           <div className="player-strip">
             <div>
@@ -606,34 +768,77 @@ function App() {
           ) : null}
         </section>
 
-        <section className="timeline" aria-label="Moves timeline">
-          <h3>Move log</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>White</th>
-                <th>Black</th>
-              </tr>
-            </thead>
-            <tbody>
-              {moveRows.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="timeline__empty">
-                    Your captures trigger onchain fireworks. Start with the first move.
-                  </td>
-                </tr>
-              ) : (
-                moveRows.map((row) => (
-                  <tr key={row.move}>
-                    <td>{row.move}</td>
-                    <td>{row.white ?? '—'}</td>
-                    <td>{row.black ?? '—'}</td>
+        <section className="info-card" aria-label="Game insights">
+          <div className="info-card__tabs" role="tablist" aria-label="Game information tabs">
+            <button
+              type="button"
+              role="tab"
+              id="info-tab-moves"
+              aria-selected={infoTab === 'moves'}
+              aria-controls="info-panel-moves"
+              className={`info-card__tab${infoTab === 'moves' ? ' info-card__tab--active' : ''}`}
+              onClick={() => setInfoTab('moves')}
+            >
+              Move log
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="info-tab-leaderboard"
+              aria-selected={infoTab === 'leaderboard'}
+              aria-controls="info-panel-leaderboard"
+              className={`info-card__tab${infoTab === 'leaderboard' ? ' info-card__tab--active' : ''}`}
+              onClick={() => setInfoTab('leaderboard')}
+            >
+              Leaderboard
+            </button>
+          </div>
+
+          {infoTab === 'moves' ? (
+            <div
+              id="info-panel-moves"
+              role="tabpanel"
+              aria-labelledby="info-tab-moves"
+              className="timeline timeline--embedded"
+            >
+              <h3>Move log</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>White</th>
+                    <th>Black</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {moveRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="timeline__empty">
+                        Your captures trigger onchain fireworks. Start with the first move.
+                      </td>
+                    </tr>
+                  ) : (
+                    moveRows.map((row) => (
+                      <tr key={row.move}>
+                        <td>{row.move}</td>
+                        <td>{row.white ?? '—'}</td>
+                        <td>{row.black ?? '—'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div
+              id="info-panel-leaderboard"
+              role="tabpanel"
+              aria-labelledby="info-tab-leaderboard"
+              className="info-card__panel"
+            >
+              <Leaderboard entries={leaderboard} variant="embedded" />
+            </div>
+          )}
         </section>
 
         {captureLog.length > 0 && (
@@ -656,7 +861,7 @@ function App() {
                     target="_blank"
                     rel="noreferrer"
                   >
-                    {shortenHex(entry.txHash, 6)}
+                    {formatTxHash(entry.txHash)}
                   </a>
                 </li>
               ))}
@@ -667,6 +872,7 @@ function App() {
       {pendingCapture && address && (
         <CaptureTransactionPanel
           capture={pendingCapture}
+          playerAddress={address ?? ZERO_ADDRESS}
           isSponsored={isSponsored}
           targetAddress={captureTarget}
           onSuccess={handleCaptureComplete}
@@ -681,6 +887,7 @@ function App() {
 
 type CaptureTransactionPanelProps = {
   capture: PendingCapture
+  playerAddress: string
   isSponsored: boolean
   targetAddress: Hex
   onSuccess: (entry: CaptureLogEntry) => void
@@ -691,6 +898,7 @@ type CaptureTransactionPanelProps = {
 
 function CaptureTransactionPanel({
   capture,
+  playerAddress,
   isSponsored,
   targetAddress,
   onSuccess,
@@ -698,18 +906,84 @@ function CaptureTransactionPanel({
   onError,
   errorMessage,
 }: CaptureTransactionPanelProps) {
+  const publicClient = usePublicClient({ chainId: preferredChain.id })
+
   const calls = useMemo(() => {
-    const payload = stringToHex(
-      `capture:${capture.event.move.san}:${capture.event.move.to}:${capture.moveNumber}`,
+    return async () => {
+      const payload = encodeFunctionData({
+        abi: chessBaseCapturesAbi,
+        functionName: 'logCapture',
+        args: [capture.moveNumber, capture.event.move.san, capture.event.move.to],
+      })
+
+      let maxFeePerGas: bigint | undefined
+      let maxPriorityFeePerGas: bigint | undefined
+
+      if (publicClient) {
+        try {
+          const fees = await publicClient.estimateFeesPerGas()
+          maxFeePerGas = fees?.maxFeePerGas ?? fees?.gasPrice ?? parseGwei('2')
+          maxPriorityFeePerGas = fees?.maxPriorityFeePerGas ?? parseGwei('1')
+        } catch {
+          maxFeePerGas = parseGwei('2')
+          maxPriorityFeePerGas = parseGwei('1')
+        }
+      }
+
+      return [
+        {
+          to: targetAddress,
+          value: 0n,
+          data: payload,
+          ...(maxFeePerGas ? { maxFeePerGas } : {}),
+          ...(maxPriorityFeePerGas ? { maxPriorityFeePerGas } : {}),
+        } as unknown as { to: Hex; data?: Hex; value?: bigint },
+      ]
+    }
+  }, [capture, publicClient, targetAddress])
+
+  if (targetAddress === ZERO_ADDRESS) {
+    const handleLocalLog = () => {
+      onSuccess({
+        id: capture.id,
+        player: playerAddress,
+        moveNumber: capture.moveNumber,
+        san: capture.event.move.san,
+        square: capture.event.move.to,
+        piece: capture.event.move.captured ?? '',
+        txHash: 'local',
+        timestamp: Date.now(),
+      })
+    }
+
+    return (
+      <div className="capture-panel" role="dialog" aria-live="polite">
+        <div className="capture-panel__body">
+          <span className="capture-panel__eyebrow">Capture ready</span>
+          <h4>
+            Log {capture.event.move.san}{' '}
+            {formatCaptureIcon(
+              capture.event.move.captured ?? 'p',
+              inferCapturedColor(capture.event.move.captured ?? undefined),
+            )}{' '}
+            locally
+          </h4>
+          <p className="capture-panel__meta">
+            Square {capture.event.move.to} • move {capture.moveNumber}
+          </p>
+          <p className="capture-panel__hint" role="status">
+            Provide a deployed contract address in VITE_CAPTURE_TARGET to log onchain.
+          </p>
+          <button type="button" className="board-card__share" onClick={handleLocalLog}>
+            Save locally
+          </button>
+          <button type="button" className="capture-panel__dismiss" onClick={onCancel}>
+            Skip this capture
+          </button>
+        </div>
+      </div>
     )
-    return [
-      {
-        to: targetAddress,
-        value: 0n,
-        data: payload,
-      },
-    ]
-  }, [capture, targetAddress])
+  }
 
   return (
     <div className="capture-panel" role="dialog" aria-live="polite">
@@ -725,6 +999,7 @@ function CaptureTransactionPanel({
           }
           onSuccess({
             id: capture.id,
+            player: playerAddress,
             moveNumber: capture.moveNumber,
             san: capture.event.move.san,
             square: capture.event.move.to,
@@ -734,8 +1009,17 @@ function CaptureTransactionPanel({
           })
         }}
         onError={(error) => {
-          const message = error?.message ?? 'Capture transaction failed.'
-          onError(message)
+          const raw = error?.message ?? 'Capture transaction failed.'
+          const lower = raw.toLowerCase()
+          let friendly = raw
+          if (lower.includes('insufficient') || lower.includes('fund')) {
+            friendly = 'Insufficient ETH on Base. Add funds or configure a paymaster.'
+          } else if (lower.includes('self call')) {
+            friendly = 'Capture target adresiniz kendi cüzdanınıza işaret ediyor. Lütfen farklı bir adres kullanın.'
+          } else if (lower.includes('user rejected')) {
+            friendly = 'Transaction was rejected.'
+          }
+          onError(friendly)
         }}
       >
         <div className="capture-panel__body">
@@ -751,7 +1035,15 @@ function CaptureTransactionPanel({
           <p className="capture-panel__meta">
             Square {capture.event.move.to} • move {capture.moveNumber}
           </p>
-          <TransactionButton text="Send capture transaction" />
+          {targetAddress === ZERO_ADDRESS ? (
+            <p className="capture-panel__hint" role="status">
+              Set VITE_CAPTURE_TARGET to log captures onchain.
+            </p>
+          ) : null}
+          <TransactionButton
+            text="Send capture transaction"
+            disabled={targetAddress === ZERO_ADDRESS}
+          />
           <TransactionToast />
           {errorMessage ? (
             <p className="capture-panel__error" role="alert">

@@ -25,7 +25,12 @@ export function AppProviders({ children }: PropsWithChildren) {
             },
             wallet: {
               preference: 'all',
-              display: 'classic',
+              display: 'modal',
+              supportedWallets: {
+                rabby: true,
+                trust: true,
+                frame: true,
+              },
             },
           }}
           miniKit={{ enabled: true }}

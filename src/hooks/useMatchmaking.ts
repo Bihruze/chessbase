@@ -35,6 +35,7 @@ export type MatchmakingState = {
 
 export type MatchmakingResult = MatchmakingState & {
   emitMove: (san: string, fen: string) => void
+  startBotMatch: () => void
 }
 
 type UseMatchmakingOptions = {
@@ -112,6 +113,22 @@ export function useMatchmaking({ onOpponentMove, queueTimeoutMs = 7000 }: UseMat
     )
   }, [])
 
+  const startBotMatch = useCallback(() => {
+    const matchId = selfIdRef.current || (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`)
+    removeFromQueue(selfIdRef.current)
+    if (timeoutRef.current) {
+      window.clearTimeout(timeoutRef.current)
+    }
+    setState({
+      status: 'bot',
+      matchId,
+      playerColor: 'white',
+      opponentType: 'bot',
+      opponentId: 'base-bot',
+      isHost: true,
+    })
+  }, [removeFromQueue])
+
   useEffect(() => {
     selfIdRef.current = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`
     const channel = new BroadcastChannel(MATCH_CHANNEL)
@@ -182,19 +199,11 @@ export function useMatchmaking({ onOpponentMove, queueTimeoutMs = 7000 }: UseMat
     }
 
     timeoutRef.current = window.setTimeout(() => {
-      removeFromQueue(selfIdRef.current)
-      setState((prev) => ({
-        ...prev,
-        status: 'bot',
-        matchId: selfIdRef.current,
-        opponentType: 'bot',
-        playerColor: 'white',
-        isHost: true,
-      }))
+      startBotMatch()
     }, queueTimeoutMs)
 
     return () => cleanupRef.current()
-  }, [onOpponentMove, queueTimeoutMs, removeFromQueue, setMatched, state.matchId])
+  }, [onOpponentMove, queueTimeoutMs, removeFromQueue, setMatched, startBotMatch, state.matchId])
 
   const emitMove = useCallback(
     (san: string, fen: string) => {
@@ -221,7 +230,8 @@ export function useMatchmaking({ onOpponentMove, queueTimeoutMs = 7000 }: UseMat
     opponentId: state.opponentId,
     isHost: state.isHost,
     emitMove,
-  }), [emitMove, state.isHost, state.matchId, state.opponentId, state.opponentType, state.playerColor, state.status])
+    startBotMatch,
+  }), [emitMove, startBotMatch, state.isHost, state.matchId, state.opponentId, state.opponentType, state.playerColor, state.status])
 
   return value
 }

@@ -7,6 +7,7 @@ type EnvConfig = {
   baseRpcUrl?: string
   baseSepoliaRpcUrl?: string
   captureTarget?: string
+  captureContractAddress?: string
 }
 
 const toSupportedChain = (value: string | undefined): SupportedChain => {
@@ -23,4 +24,5 @@ export const env: EnvConfig = {
   baseRpcUrl: import.meta.env.VITE_BASE_RPC_URL,
   baseSepoliaRpcUrl: import.meta.env.VITE_BASE_SEPOLIA_RPC_URL,
   captureTarget: import.meta.env.VITE_CAPTURE_TARGET,
+  captureContractAddress: import.meta.env.VITE_CAPTURE_CONTRACT_ADDRESS,
 }
