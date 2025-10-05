@@ -226,17 +226,18 @@ function App() {
   }, [])
 
   const buildMoveHintStyles = useCallback(
-    (fromSquare: string) => {
+    (fromSquare: string, includeOrigin: boolean) => {
       const legalMoves = getLegalMoves()
       const relevant = legalMoves.filter((move) => move.from === fromSquare)
       if (relevant.length === 0) {
         return {}
       }
-      const hints: Record<string, CSSProperties> = {
-        [fromSquare]: {
+      const hints: Record<string, CSSProperties> = {}
+      if (includeOrigin) {
+        hints[fromSquare] = {
           boxShadow: 'inset 0 0 0 4px rgba(149, 38, 211, 0.9)',
           background: 'radial-gradient(circle, rgba(214,92,255,0.18) 42%, transparent 48%)',
-        },
+        }
       }
       relevant.forEach((move) => {
         const isCapture = Boolean(move.captured)
@@ -257,7 +258,7 @@ function App() {
 
   const showMoveHints = useCallback(
     (fromSquare: string, source: 'select' | 'hover' = 'select') => {
-      const hints = buildMoveHintStyles(fromSquare)
+      const hints = buildMoveHintStyles(fromSquare, source === 'select')
       if (Object.keys(hints).length === 0) {
         if (source === 'select') {
           clearMoveHints()
