@@ -9,11 +9,12 @@
     "name": "ChessBase",
     "subtitle": "Fast Base-native chess duels",
     "description": "Match with Base players or our bot and log every capture onchain.",
-    "homeUrl": "https://example.com",
-    "iconUrl": "https://example.com/icon.png",
-    "splashImageUrl": "https://example.com/splash.png",
+    "homeUrl": "https://chessbase.vercel.app",
+    "iconUrl": "https://chessbase.vercel.app/icon.png",
+    "imageUrl": "https://chessbase.vercel.app/image.png",
+    "splashImageUrl": "https://chessbase.vercel.app/splash.png",
     "splashBackgroundColor": "#0B1F3A",
-    "primaryCategory": "gaming",
+    "primaryCategory": "games",
     "tags": [
       "chess",
       "strategy",
@@ -21,13 +22,14 @@
       "baseapp"
     ],
     "screenshotUrls": [
-      "https://example.com/screenshot-portrait.png"
+      "https://chessbase.vercel.app/screenshot-portrait.jpg"
     ],
-    "heroImageUrl": "https://example.com/hero.png",
+    "heroImageUrl": "https://chessbase.vercel.app/image.png",
     "tagline": "Capture, sign, share.",
     "ogTitle": "ChessBase",
     "ogDescription": "Every capture submits a Base transaction.",
-    "ogImageUrl": "https://example.com/og.png"
+    "ogImageUrl": "https://chessbase.vercel.app/image.png",
+    "webhookUrl": "https://chessbase.vercel.app/api/webhook"
   },
   "baseBuilder": {
     "allowedAddresses": [

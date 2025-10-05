@@ -339,8 +339,8 @@ function App() {
     }
 
     const computeBoardSize = () => {
-      const width = Math.min(window.innerWidth - 32, 560)
-      setBoardSize(Math.max(280, width))
+      const width = Math.min(window.innerWidth - 24, 400)
+      setBoardSize(Math.max(260, width))
     }
 
     computeBoardSize()

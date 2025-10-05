@@ -25,9 +25,10 @@ body {
 
 .app__container {
   width: 100%;
-  max-width: 1120px;
+  max-width: 420px;
+  margin: 0 auto;
   display: grid;
-  gap: 24px;
+  gap: 20px;
 }
 
 .app__header-row {
@@ -328,12 +329,12 @@ body {
 .board-card__controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
 }
 
 .board-card__controls button {
-  flex: 1 1 110px;
-  padding: 10px 14px;
+  flex: 1 1 120px;
+  padding: 9px 12px;
   border-radius: 14px;
   border: 1px solid rgba(168, 85, 247, 0.35);
   background: linear-gradient(135deg, rgba(129, 140, 248, 0.7), rgba(168, 85, 247, 0.8));
@@ -351,7 +352,7 @@ body {
 
 .board-card__controls button:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 12px 24px rgba(168, 85, 247, 0.35);
+  box-shadow: 0 10px 20px rgba(168, 85, 247, 0.3);
 }
 
 .board-card__controls button:disabled {
