@@ -25,10 +25,11 @@ body {
 
 .app__container {
   width: 100%;
-  max-width: 420px;
+  max-width: 400px;
   margin: 0 auto;
+  padding: 12px 20px 28px;
   display: grid;
-  gap: 20px;
+  gap: 24px;
 }
 
 .app__header-row {
@@ -329,12 +330,12 @@ body {
 .board-card__controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
 }
 
 .board-card__controls button {
-  flex: 1 1 120px;
-  padding: 9px 12px;
+  flex: 1 1 140px;
+  padding: 10px 14px;
   border-radius: 14px;
   border: 1px solid rgba(168, 85, 247, 0.35);
   background: linear-gradient(135deg, rgba(129, 140, 248, 0.7), rgba(168, 85, 247, 0.8));
@@ -352,7 +353,7 @@ body {
 
 .board-card__controls button:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 10px 20px rgba(168, 85, 247, 0.3);
+  box-shadow: 0 12px 22px rgba(168, 85, 247, 0.32);
 }
 
 .board-card__controls button:disabled {
@@ -628,20 +629,23 @@ body {
   font-weight: 600;
 }
 
-@media (min-width: 960px) {
-  .app__container {
-    grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+@media (min-width: 1200px) {
+  .app__container.app__container--wide {
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
     align-items: start;
+    max-width: 920px;
+    padding: 24px 32px 40px;
+    gap: 32px;
   }
 
-  .app__header {
+  .app__container.app__container--wide .app__header {
     grid-column: 1 / -1;
   }
 
-  .info-card {
+  .app__container.app__container--wide .info-card {
     position: sticky;
-    top: 32px;
-    max-height: calc(100vh - 96px);
+    top: 48px;
+    max-height: calc(100vh - 120px);
     overflow: auto;
   }
 }
