@@ -24,16 +24,10 @@ export function AppProviders({ children }: PropsWithChildren) {
               mode: 'auto',
             },
             wallet: {
-              preference: 'all',
               display: 'modal',
-              supportedWallets: {
-                rabby: true,
-                trust: true,
-                frame: true,
-              },
             },
           }}
-          miniKit={{ enabled: true }}
+          miniKit={{ enabled: true, autoConnect: true }}
         >
           {children}
         </OnchainKitProvider>

@@ -1,10 +1,5 @@
-import { APP_NAME, APP_TAGLINE, APP_URL } from '../config/constants'
 import { env } from '../config/env'
-import {
-  coinbaseWallet,
-  injected,
-  walletConnect,
-} from 'wagmi/connectors'
+import { farcasterMiniApp as farcasterMiniAppConnector } from '@farcaster/miniapp-wagmi-connector'
 import {
   cookieStorage,
   createConfig,
@@ -27,29 +22,7 @@ const transports = {
   [baseSepolia.id]: http(env.baseSepoliaRpcUrl ?? DEFAULT_BASE_SEPOLIA_RPC),
 } as const
 
-const connectors: CreateConnectorFn[] = [
-  coinbaseWallet({
-    appName: APP_NAME,
-    preference: 'all',
-    appLogoUrl: `${APP_URL}/icon.png`,
-  }),
-  injected({ shimDisconnect: true }),
-]
-
-if (env.walletConnectProjectId) {
-  connectors.push(
-    walletConnect({
-      projectId: env.walletConnectProjectId,
-      metadata: {
-        name: APP_NAME,
-        description: APP_TAGLINE,
-        url: APP_URL,
-        icons: [`${APP_URL}/icon.png`],
-      },
-      showQrModal: true,
-    }),
-  )
-}
+const connectors: CreateConnectorFn[] = [farcasterMiniAppConnector()]
 
 export const wagmiConfig = createConfig({
   chains: supportedChains,

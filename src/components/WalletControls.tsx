@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Connector } from 'wagmi'
 import { useAccount, useConnect, useDisconnect } from 'wagmi'
+import { useMiniKit } from '@coinbase/onchainkit/minikit'
 import { shortenHex } from '../utils/strings'
 
-const ALWAYS_AVAILABLE = new Set(['walletConnect', 'coinbaseWallet', 'coinbaseWalletSDK', 'injected'])
+const FARCASTER_CONNECTOR_ID = 'farcaster'
+
+const ALWAYS_AVAILABLE = new Set([FARCASTER_CONNECTOR_ID])
 
 const CONNECTOR_LABELS: Record<string, string> = {
-  'coinbaseWalletSDK': 'Coinbase Wallet',
-  coinbaseWallet: 'Coinbase Wallet',
-  walletConnect: 'WalletConnect',
+  [FARCASTER_CONNECTOR_ID]: 'Farcaster Wallet',
 }
 
 const resolveConnectorLabel = (connector: Connector) => {
@@ -27,6 +28,7 @@ const resolveConnectorLabel = (connector: Connector) => {
 }
 
 export function WalletControls() {
+  const { context: miniAppContext } = useMiniKit()
   const { address, isConnected } = useAccount()
   const { disconnect } = useDisconnect()
   const { connect, connectors, error, isPending, variables } = useConnect()
@@ -34,6 +36,7 @@ export function WalletControls() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const isMiniApp = Boolean(miniAppContext)
 
   useEffect(() => {
     if (isConnected) {
@@ -60,13 +63,16 @@ export function WalletControls() {
   const uniqueConnectors = useMemo(() => {
     const seen = new Set<string>()
     return connectors.filter((connector) => {
+      if (isMiniApp && connector.id !== FARCASTER_CONNECTOR_ID) {
+        return false
+      }
       if (seen.has(connector.id)) {
         return false
       }
       seen.add(connector.id)
       return connector.ready || ALWAYS_AVAILABLE.has(connector.id)
     })
-  }, [connectors])
+  }, [connectors, isMiniApp])
 
   const handleConnect = async (connector: Connector) => {
     try {
@@ -99,17 +105,32 @@ export function WalletControls() {
     ? `Connecting ${resolveConnectorLabel(activeConnector)}...`
     : 'Connecting...'
 
+  const singleConnector = uniqueConnectors.length === 1 ? uniqueConnectors[0] : undefined
+
+  const handleConnectClick = () => {
+    if (isPending || uniqueConnectors.length === 0) {
+      return
+    }
+
+    if (singleConnector) {
+      void handleConnect(singleConnector)
+      return
+    }
+
+    setMenuOpen((prev) => !prev)
+  }
+
   return (
     <div className="wallet-connect" ref={containerRef}>
       <button
         type="button"
         className="connect-wallet-button"
-        onClick={() => setMenuOpen((prev) => !prev)}
-        disabled={isPending}
+        onClick={handleConnectClick}
+        disabled={isPending || uniqueConnectors.length === 0}
       >
         {isPending ? pendingLabel : 'Connect wallet'}
       </button>
-      {menuOpen ? (
+      {menuOpen && uniqueConnectors.length > 1 ? (
         <div className="wallet-connect__menu">
           {uniqueConnectors.map((connector) => {
             const label = resolveConnectorLabel(connector)
