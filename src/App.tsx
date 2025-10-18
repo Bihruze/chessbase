@@ -124,6 +124,7 @@ function App() {
   const [moveHints, setMoveHints] = useState<Record<string, CSSProperties>>({})
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null)
   const [hoveredSquare, setHoveredSquare] = useState<string | null>(null)
+  const [hasSessionStarted, setHasSessionStarted] = useState(false)
   const captureTarget = (env.captureTarget ?? DEFAULT_CAPTURE_CONTRACT) as Hex
   const containerRef = useRef<HTMLDivElement | null>(null)
   const boardContainerRef = useRef<HTMLDivElement | null>(null)
@@ -185,12 +186,18 @@ function App() {
   }, [])
 
   const handleNewGame = useCallback(() => {
+    setHasSessionStarted(true)
     setMateBanner(null)
     drawNotifiedRef.current = false
     resetGame()
   }, [resetGame])
 
   const handleShare = useCallback(async () => {
+    if (!hasSessionStarted) {
+      setShareHint('Start a new game to share your match.')
+      return
+    }
+
     const shareUrl =
       typeof window !== 'undefined' && window.location
         ? window.location.href
@@ -219,7 +226,7 @@ function App() {
       console.error('share failed', error)
       setShareHint('Sharing failed — try again later')
     }
-  }, [])
+  }, [hasSessionStarted])
 
   const clearMoveHints = useCallback(() => {
     setMoveHints({})
@@ -349,16 +356,21 @@ function App() {
       const rect = node.getBoundingClientRect()
       const width = rect.width
       const height = rect.height || width
-      if (width <= 0 || height <= 0) {
+      if (width <= 0) {
         return
       }
-      const containerRect = containerRef.current?.getBoundingClientRect()
-      const containerHeight = containerRect && containerRect.height > 0 ? containerRect.height : height
-      const raw = Math.min(width, height, 424, containerHeight * 0.6)
+
+      const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : width
+      const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : height
+      const margin = 24
+      const viewportWidthCap = Math.max(240, viewportWidth - margin * 2)
+      const viewportHeightCap = Math.max(240, viewportHeight - margin * 2)
+      const raw = Math.min(width, height || width, viewportWidthCap, viewportHeightCap)
       const squareSize = Math.max(1, Math.floor(raw / 8))
-      const boardPixels = Math.floor(Math.min(raw, squareSize * 8))
+      const boardPixels = Math.max(240, Math.floor(Math.min(raw, squareSize * 8)))
+
       setBoardSize(boardPixels)
-      setIsCompactLayout(width < 360)
+      setIsCompactLayout(width < 420)
     }
 
     computeBoardSize()
@@ -376,6 +388,18 @@ function App() {
   useEffect(() => {
     setInfoExpanded(!isCompactLayout)
   }, [isCompactLayout])
+
+  useEffect(() => {
+    if (!hasSessionStarted && history.length > 0) {
+      setHasSessionStarted(true)
+    }
+  }, [hasSessionStarted, history.length])
+
+  useEffect(() => {
+    if (!hasSessionStarted && (matchStatus === 'matched' || matchStatus === 'bot')) {
+      setHasSessionStarted(true)
+    }
+  }, [hasSessionStarted, matchStatus])
 
   useEffect(() => {
     setBoardOrientation(playerColor)
@@ -663,6 +687,9 @@ function App() {
   }, [captureLog, lastCapture, opponentDisplayName, pendingCapture, playerColor, userDisplayName])
 
   const toggleOrientation = () => {
+    if (!hasSessionStarted) {
+      return
+    }
     setBoardOrientation((current) => (current === 'white' ? 'black' : 'white'))
   }
 
@@ -713,12 +740,56 @@ function App() {
             </div>
           )}
 
-          <div className="board-card__board" ref={boardContainerRef}>
+          <div className="board-card__controls" role="group" aria-label="Board actions">
+            <button type="button" onClick={handleNewGame}>
+              New game
+            </button>
+            {hasSessionStarted ? (
+              <>
+                <button
+                  type="button"
+                  className="board-card__share"
+                  onClick={handleShare}
+                  disabled={matchStatus === 'searching'}
+                >
+                  Share game
+                </button>
+                <button type="button" onClick={undoMove} disabled={!history.length}>
+                  Undo move
+                </button>
+                <button type="button" onClick={toggleOrientation}>
+                  Flip board
+                </button>
+              </>
+            ) : null}
+            <button type="button" onClick={scrollToLeaderboard}>
+              View leaderboard
+            </button>
+          </div>
+
+          <div
+            className={`board-card__board${hasSessionStarted ? '' : ' board-card__board--locked'}`}
+            ref={boardContainerRef}
+          >
             <Chessboard options={chessboardOptions} />
-            {matchStatus === 'searching' && (
-              <div className="match-overlay" role="status">
-                <div className="match-overlay__content">Looking for another Base player…</div>
+            {!hasSessionStarted ? (
+              <div className="board-card__starter" role="presentation">
+                <span className="board-card__starter-eyebrow">Ready to play?</span>
+                <h3>Launch a new match to unlock the board.</h3>
+                <p>
+                  Start with an empty board, then invite friends or challenge Base Bot. Additional
+                  options unlock once the match begins.
+                </p>
+                <button type="button" onClick={handleNewGame} className="board-card__starter-button">
+                  New game
+                </button>
               </div>
+            ) : (
+              matchStatus === 'searching' && (
+                <div className="match-overlay" role="status">
+                  <div className="match-overlay__content">Looking for another Base player…</div>
+                </div>
+              )
             )}
           </div>
           {mateBanner ? (
@@ -744,28 +815,6 @@ function App() {
             </div>
           </div>
 
-          <div className="board-card__controls">
-            <button
-              type="button"
-              className="board-card__share"
-              onClick={handleShare}
-              disabled={matchStatus === 'searching'}
-            >
-              Share game
-            </button>
-            <button type="button" onClick={handleNewGame}>
-              New game
-            </button>
-            <button type="button" onClick={undoMove} disabled={!history.length}>
-              Undo move
-            </button>
-            <button type="button" onClick={toggleOrientation}>
-              Flip board
-            </button>
-            <button type="button" onClick={scrollToLeaderboard}>
-              View leaderboard
-            </button>
-          </div>
           <p className="board-card__note" aria-live="polite">
             {lastCaptureCopy}
           </p>

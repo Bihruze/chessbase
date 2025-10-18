@@ -20,25 +20,27 @@ body {
   min-height: 100dvh;
   display: flex;
   justify-content: center;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .app__container {
-  width: 90vw;
-  max-width: 424px;
-  height: auto;
-  max-height: 695px;
+  width: min(96vw, 680px);
+  max-width: 720px;
+  min-height: calc(100dvh - 48px);
   margin: 0 auto;
-  padding: 12px 20px 28px;
+  padding: clamp(18px, 4vw, 32px);
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
-  gap: 12px;
-  overflow: hidden;
+  gap: clamp(16px, 3vh, 24px);
+  overflow: visible;
 }
 
 @media (max-width: 480px) {
   .app__container {
-    width: 92vw;
+    width: 94vw;
+    min-height: calc(100dvh - 32px);
+    padding: 18px;
+    gap: 16px;
   }
 }
 
@@ -375,12 +377,13 @@ body {
 
 .board-card__board {
   width: 100%;
+  max-width: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
   position: relative;
   aspect-ratio: 1 / 1;
-  max-height: min(60%, 60vh, 417px);
+  max-height: min(72vh, 640px);
   margin: 0 auto;
   flex: 0 0 auto;
 }
@@ -388,6 +391,64 @@ body {
 .board-card__board .react-chessboard {
   width: 100% !important;
   height: 100% !important;
+}
+
+.board-card__board--locked .react-chessboard {
+  filter: blur(4px);
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+.board-card__starter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  padding: clamp(20px, 6vw, 36px);
+  text-align: center;
+  background: rgba(11, 3, 26, 0.88);
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.25);
+}
+
+.board-card__starter-eyebrow {
+  font-size: 0.75rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(196, 181, 253, 0.7);
+}
+
+.board-card__starter h3 {
+  margin: 0;
+  font-size: clamp(1.05rem, 2.8vw, 1.35rem);
+  color: #f8f7ff;
+}
+
+.board-card__starter p {
+  margin: 0;
+  max-width: 320px;
+  color: rgba(226, 232, 240, 0.78);
+  font-size: 0.9rem;
+}
+
+.board-card__starter-button {
+  padding: 12px 20px;
+  border-radius: 14px;
+  border: 1px solid rgba(168, 85, 247, 0.55);
+  background: linear-gradient(135deg, rgba(129, 140, 248, 0.85), rgba(168, 85, 247, 0.9));
+  color: #f5f3ff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.board-card__starter-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 32px rgba(59, 130, 246, 0.24);
 }
 
 .board-card__controls {
