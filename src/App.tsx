@@ -126,6 +126,7 @@ function App() {
   const [hoveredSquare, setHoveredSquare] = useState<string | null>(null)
   const captureTarget = (env.captureTarget ?? DEFAULT_CAPTURE_CONTRACT) as Hex
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const boardContainerRef = useRef<HTMLDivElement | null>(null)
   const topLeaderboardRef = useRef<HTMLDivElement | null>(null)
 
   const handleOpponentMove = useCallback(
@@ -339,16 +340,20 @@ function App() {
       return
     }
 
-    const node = containerRef.current
+    const node = boardContainerRef.current ?? containerRef.current
     if (!node) {
       return
     }
 
     const computeBoardSize = () => {
-      const { width } = node.getBoundingClientRect()
-      const raw = Math.min(Math.max(width - 32, 240), 420)
-      const squareSize = Math.max(30, Math.floor(raw / 8))
-      const snapped = Math.max(240, squareSize * 8)
+      const rect = node.getBoundingClientRect()
+      const width = rect.width
+      if (width <= 0) {
+        return
+      }
+      const raw = Math.min(width, 424)
+      const squareSize = Math.max(1, Math.floor(raw / 8))
+      const snapped = squareSize * 8
       setBoardSize(snapped)
       setIsCompactLayout(width < 360)
     }
@@ -604,6 +609,7 @@ function App() {
         width: boardSize,
         height: boardSize,
         maxWidth: '100%',
+        maxHeight: '100%',
         borderRadius: '20px',
         boxShadow: '0 12px 28px rgba(12, 24, 63, 0.45)',
       } satisfies CSSProperties,
@@ -707,7 +713,7 @@ function App() {
             </div>
           )}
 
-          <div className="board-card__board">
+          <div className="board-card__board" ref={boardContainerRef}>
             <Chessboard options={chessboardOptions} />
             {matchStatus === 'searching' && (
               <div className="match-overlay" role="status">

@@ -24,21 +24,20 @@ body {
 }
 
 .app__container {
-  width: min(90vw, 424px);
+  width: 90vw;
   max-width: 424px;
-  aspect-ratio: 424 / 695;
   height: auto;
-  max-height: min(80vh, 695px);
+  max-height: 695px;
   margin: 0 auto;
   padding: 12px 20px 28px;
   display: grid;
   gap: 24px;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 @media (max-width: 480px) {
   .app__container {
-    width: min(92vw, 424px);
+    width: 92vw;
   }
 }
 
@@ -369,9 +368,14 @@ body {
 }
 
 .board-card__board {
+  width: 100%;
   display: flex;
   justify-content: center;
+  align-items: center;
   position: relative;
+  aspect-ratio: 1 / 1;
+  max-height: 80vh;
+  margin: 0 auto;
 }
 
 .board-card__controls {
