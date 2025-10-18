@@ -352,10 +352,12 @@ function App() {
       if (width <= 0 || height <= 0) {
         return
       }
-      const raw = Math.min(width, height, 424)
+      const containerRect = containerRef.current?.getBoundingClientRect()
+      const containerHeight = containerRect && containerRect.height > 0 ? containerRect.height : height
+      const raw = Math.min(width, height, 424, containerHeight * 0.6)
       const squareSize = Math.max(1, Math.floor(raw / 8))
-      const snapped = squareSize * 8
-      setBoardSize(snapped)
+      const boardPixels = Math.floor(Math.min(raw, squareSize * 8))
+      setBoardSize(boardPixels)
       setIsCompactLayout(width < 360)
     }
 
@@ -372,10 +374,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    setInfoExpanded((prev) => {
-      const next = !isCompactLayout
-      return prev === next ? prev : next
-    })
+    setInfoExpanded(!isCompactLayout)
   }, [isCompactLayout])
 
   useEffect(() => {

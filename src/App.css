@@ -31,7 +31,8 @@ body {
   margin: 0 auto;
   padding: 12px 20px 28px;
   display: grid;
-  gap: 24px;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 12px;
   overflow: hidden;
 }
 
@@ -222,13 +223,16 @@ body {
 .board-card {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .info-card {
   display: block;
   padding: 0;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .info-card__summary {
@@ -286,6 +290,8 @@ body {
   flex-direction: column;
   gap: 16px;
   padding: 16px 20px 20px;
+  max-height: min(260px, 35vh);
+  overflow-y: auto;
 }
 
 .info-card:not(.info-card--open) .info-card__content {
@@ -374,8 +380,14 @@ body {
   align-items: center;
   position: relative;
   aspect-ratio: 1 / 1;
-  max-height: 80vh;
+  max-height: min(60%, 60vh, 417px);
   margin: 0 auto;
+  flex: 0 0 auto;
+}
+
+.board-card__board .react-chessboard {
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .board-card__controls {
@@ -595,6 +607,7 @@ body {
 }
 
 .ledger {
+  flex-shrink: 0;
   background: rgba(33, 17, 60, 0.82);
   border: 1px solid rgba(168, 85, 247, 0.2);
   border-radius: 24px;
@@ -690,6 +703,9 @@ body {
   background: rgba(33, 17, 60, 0.82);
   border: 1px solid rgba(168, 85, 247, 0.2);
   box-shadow: 0 24px 60px rgba(11, 3, 23, 0.45);
+  max-height: min(200px, 30vh);
+  overflow-y: auto;
+  flex-shrink: 0;
 }
 
 .leaderboard-block__title {
