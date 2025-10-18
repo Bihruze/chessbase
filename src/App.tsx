@@ -10,7 +10,7 @@ import type { CaptureEvent } from './hooks/useChessGame'
 import { Leaderboard } from './components/Leaderboard'
 import { useLeaderboard } from './hooks/useLeaderboard'
 import { useMatchmaking } from './hooks/useMatchmaking'
-import { APP_NAME, APP_TAGLINE, APP_URL, DEFAULT_CAPTURE_CONTRACT } from './config/constants'
+import { APP_NAME, APP_URL, DEFAULT_CAPTURE_CONTRACT } from './config/constants'
 import { shortenHex } from './utils/strings'
 import { selectEngineMove } from './utils/chessAi'
 import { env } from './config/env'
@@ -697,14 +697,11 @@ function App() {
     <div className="app" style={containerStyle}>
       <div className="app__container" ref={containerRef}>
         <header className="app__header">
-          <div className="app__header-row">
-            <div className="app__title">
-              <span className="app__logo" aria-hidden="true">♞</span>
-              <div>
-                <h1>{APP_NAME}</h1>
-                <p className="app__tagline">{APP_TAGLINE}</p>
-              </div>
-            </div>
+          <div className="app__title">
+            <span className="app__logo" aria-hidden="true">♞</span>
+            <h1>{APP_NAME}</h1>
+          </div>
+          <div className="app__header-wallet">
             <WalletControls />
           </div>
         </header>
@@ -788,9 +785,6 @@ function App() {
                 </button>
               </>
             ) : null}
-            <button type="button" className="board-card__leaderboard" onClick={scrollToLeaderboard}>
-              View leaderboard
-            </button>
           </div>
           {mateBanner ? (
             <div
