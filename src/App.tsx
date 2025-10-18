@@ -50,21 +50,6 @@ const inferCapturedColor = (piece?: string) => {
   return piece === piece.toLowerCase() ? 'black' : 'white'
 }
 
-const buildEntryPointCopy = (locationType?: string) => {
-  switch (locationType) {
-    case 'cast_embed':
-      return 'You launched this duel from a cast embed.'
-    case 'cast_share':
-      return 'Shared straight from a cast — nice and social.'
-    case 'notification':
-      return 'Re-engaged from a Base notification.'
-    case 'channel':
-      return 'Jumped in from a Base channel.'
-    default:
-      return 'Launch instantly, no downloads, no friction.'
-  }
-}
-
 type PendingCapture = {
   id: string
   event: CaptureEvent
@@ -116,26 +101,32 @@ function App() {
     getLatestSan,
     getCurrentFen,
     getLegalMoves,
+    repetitionCount,
   } = useChessGame()
 
   const [pendingCapture, setPendingCapture] = useState<PendingCapture | null>(null)
   const [captureLog, setCaptureLog] = useState<CaptureLogEntry[]>([])
   const [captureError, setCaptureError] = useState<string | null>(null)
   const captureKeyRef = useRef<string | null>(null)
+  const drawNotifiedRef = useRef(false)
   const { leaderboard, mergeChainEntry } = useLeaderboard()
   const [boardOrientation, setBoardOrientation] = useState<'white' | 'black'>('white')
-  const [boardSize, setBoardSize] = useState(360)
+  const [boardSize, setBoardSize] = useState(320)
+  const [isCompactLayout, setIsCompactLayout] = useState(false)
+  const [infoExpanded, setInfoExpanded] = useState(true)
   const isSponsored = Boolean(env.onchainKitApiKey)
   const [shareHint, setShareHint] = useState<string | null>(null)
-  const [mateBanner, setMateBanner] = useState<{ text: string; variant: 'win' | 'loss' } | null>(
-    null,
-  )
+  const [mateBanner, setMateBanner] = useState<
+    { text: string; variant: 'win' | 'loss' | 'draw' } | null
+  >(null)
   const [botDifficulty, setBotDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium')
   const [infoTab, setInfoTab] = useState<'moves' | 'leaderboard'>('moves')
   const [moveHints, setMoveHints] = useState<Record<string, CSSProperties>>({})
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null)
   const [hoveredSquare, setHoveredSquare] = useState<string | null>(null)
   const captureTarget = (env.captureTarget ?? DEFAULT_CAPTURE_CONTRACT) as Hex
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const topLeaderboardRef = useRef<HTMLDivElement | null>(null)
 
   const handleOpponentMove = useCallback(
     (san: string, fen: string) => {
@@ -187,6 +178,16 @@ function App() {
     setPendingCapture(null)
     setCaptureError(null)
   }, [])
+
+  const scrollToLeaderboard = useCallback(() => {
+    topLeaderboardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [])
+
+  const handleNewGame = useCallback(() => {
+    setMateBanner(null)
+    drawNotifiedRef.current = false
+    resetGame()
+  }, [resetGame])
 
   const handleShare = useCallback(async () => {
     const shareUrl =
@@ -338,15 +339,38 @@ function App() {
       return
     }
 
+    const node = containerRef.current
+    if (!node) {
+      return
+    }
+
     const computeBoardSize = () => {
-      const width = Math.min(window.innerWidth - 32, 360)
-      setBoardSize(Math.max(260, width))
+      const { width } = node.getBoundingClientRect()
+      const raw = Math.min(Math.max(width - 32, 240), 420)
+      const squareSize = Math.max(30, Math.floor(raw / 8))
+      const snapped = Math.max(240, squareSize * 8)
+      setBoardSize(snapped)
+      setIsCompactLayout(width < 360)
     }
 
     computeBoardSize()
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(() => computeBoardSize())
+      observer.observe(node)
+      return () => observer.disconnect()
+    }
+
     window.addEventListener('resize', computeBoardSize)
     return () => window.removeEventListener('resize', computeBoardSize)
   }, [])
+
+  useEffect(() => {
+    setInfoExpanded((prev) => {
+      const next = !isCompactLayout
+      return prev === next ? prev : next
+    })
+  }, [isCompactLayout])
 
   useEffect(() => {
     setBoardOrientation(playerColor)
@@ -446,24 +470,34 @@ function App() {
     }
   }, [safeArea])
 
-  const activeColorLabel = turn === 'w' ? 'White' : 'Black'
   const waitingColorLabel = turn === 'w' ? 'Black' : 'White'
   const opponentColorLabel = playerColor === 'white' ? 'Black' : 'White'
   const playerColorLabel = playerColor === 'white' ? 'White' : 'Black'
-  const isGameOver = status.isCheckmate || status.isDraw || status.isStalemate
 
   useEffect(() => {
     if (!status.isCheckmate) {
-      setMateBanner(null)
       return
     }
     const playerDeliveredMate = waitingColorLabel === playerColorLabel
     setMateBanner(
       playerDeliveredMate
-        ? { text: 'Checkmate! You won 🎉', variant: 'win' }
-        : { text: 'Checkmate. Opponent wins.', variant: 'loss' },
+        ? { text: '🏆  Chessed! You won the game.', variant: 'win' }
+        : { text: '😢  You lost the game.', variant: 'loss' },
     )
   }, [playerColorLabel, status.isCheckmate, waitingColorLabel])
+
+  useEffect(() => {
+    const isRepetitionDraw = status.isThreefoldRepetition || repetitionCount >= 9
+    if (!isRepetitionDraw) {
+      drawNotifiedRef.current = false
+      return
+    }
+    if (status.isCheckmate || drawNotifiedRef.current) {
+      return
+    }
+    drawNotifiedRef.current = true
+    setMateBanner({ text: "🤝 Draw! It's a tie.", variant: 'draw' })
+  }, [repetitionCount, status.isCheckmate, status.isThreefoldRepetition])
 
   useEffect(() => {
     if (!mateBanner) {
@@ -473,37 +507,9 @@ function App() {
     return () => clearTimeout(timer)
   }, [mateBanner])
 
-  const statusCopy = useMemo(() => {
-    if (status.isCheckmate) {
-      const playerDeliveredMate = waitingColorLabel === playerColorLabel
-      return playerDeliveredMate
-        ? 'Checkmate! You delivered mate.'
-        : 'Checkmate! You were checkmated.'
-    }
-    if (status.isStalemate) {
-      return 'Draw • Stalemate'
-    }
-    if (status.isDraw) {
-      return 'Draw • ½ - ½'
-    }
-    if (status.isCheck) {
-      return `${activeColorLabel} is in check`
-    }
-    return `${activeColorLabel} to move`
-  }, [activeColorLabel, playerColorLabel, status, waitingColorLabel])
-
   const userDisplayName =
     context?.user?.displayName ?? context?.user?.username ?? 'You'
   const opponentDisplayName = opponentType === 'human' ? 'Opponent' : 'Base Bot'
-  const matchStatusCopy = useMemo(() => {
-    if (matchStatus === 'searching') {
-      return 'Searching for another Base player…'
-    }
-    if (opponentType === 'bot') {
-      return 'Duelling with the Base bot'
-    }
-    return 'Matched with a Base player'
-  }, [matchStatus, opponentType])
   const moveRows = useMemo(() => {
     const rows: Array<{ move: number; white?: string; black?: string }> = []
     for (let i = 0; i < history.length; i += 2) {
@@ -589,7 +595,6 @@ function App() {
     ...moveHints,
   }), [highlightStyles, moveHints])
 
-  const entryPointCopy = buildEntryPointCopy(context?.location?.type)
   const chessboardOptions = useMemo(
     () => ({
       id: 'base-chessboard',
@@ -657,7 +662,7 @@ function App() {
 
   return (
     <div className="app" style={containerStyle}>
-      <div className="app__container">
+      <div className="app__container" ref={containerRef}>
         <header className="app__header">
           <div className="app__header-row">
             <div className="app__title">
@@ -668,13 +673,6 @@ function App() {
               </div>
             </div>
             <WalletControls />
-          </div>
-          <div className="app__status">
-            <span className={isGameOver ? 'status status--done' : 'status'}>
-              {statusCopy}
-            </span>
-            <span className="status status--light">{matchStatusCopy}</span>
-            <span className="status status--light">{entryPointCopy}</span>
           </div>
         </header>
 
@@ -749,7 +747,7 @@ function App() {
             >
               Share game
             </button>
-            <button type="button" onClick={resetGame}>
+            <button type="button" onClick={handleNewGame}>
               New game
             </button>
             <button type="button" onClick={undoMove} disabled={!history.length}>
@@ -757,6 +755,9 @@ function App() {
             </button>
             <button type="button" onClick={toggleOrientation}>
               Flip board
+            </button>
+            <button type="button" onClick={scrollToLeaderboard}>
+              View leaderboard
             </button>
           </div>
           <p className="board-card__note" aria-live="polite">
@@ -769,82 +770,96 @@ function App() {
           ) : null}
         </section>
 
-        <section className="info-card" aria-label="Game insights">
-          <div className="info-card__tabs" role="tablist" aria-label="Game information tabs">
-            <button
-              type="button"
-              role="tab"
-              id="info-tab-moves"
-              aria-selected={infoTab === 'moves'}
-              aria-controls="info-panel-moves"
-              className={`info-card__tab${infoTab === 'moves' ? ' info-card__tab--active' : ''}`}
-              onClick={() => setInfoTab('moves')}
-            >
-              Move log
-            </button>
-            <button
-              type="button"
-              role="tab"
-              id="info-tab-leaderboard"
-              aria-selected={infoTab === 'leaderboard'}
-              aria-controls="info-panel-leaderboard"
-              className={`info-card__tab${infoTab === 'leaderboard' ? ' info-card__tab--active' : ''}`}
-              onClick={() => setInfoTab('leaderboard')}
-            >
-              Leaderboard
-            </button>
-          </div>
+        <details
+          className={`info-card${infoExpanded ? ' info-card--open' : ''}`}
+          aria-label="Game insights"
+          open={infoExpanded}
+          onToggle={(event) => setInfoExpanded(event.currentTarget.open)}
+        >
+          <summary className="info-card__summary">
+            <span>Game insights</span>
+            <span className="info-card__summary-pill">{infoTab === 'moves' ? 'Move log' : 'Leaderboard'}</span>
+          </summary>
+          <div className="info-card__content">
+            <div className="info-card__tabs" role="tablist" aria-label="Game information tabs">
+              <button
+                type="button"
+                role="tab"
+                id="info-tab-moves"
+                aria-selected={infoTab === 'moves'}
+                aria-controls="info-panel-moves"
+                className={`info-card__tab${infoTab === 'moves' ? ' info-card__tab--active' : ''}`}
+                onClick={() => setInfoTab('moves')}
+              >
+                Move log
+              </button>
+              <button
+                type="button"
+                role="tab"
+                id="info-tab-leaderboard"
+                aria-selected={infoTab === 'leaderboard'}
+                aria-controls="info-panel-leaderboard"
+                className={`info-card__tab${infoTab === 'leaderboard' ? ' info-card__tab--active' : ''}`}
+                onClick={() => setInfoTab('leaderboard')}
+              >
+                Leaderboard
+              </button>
+            </div>
 
-          {infoTab === 'moves' ? (
-            <div
-              id="info-panel-moves"
-              role="tabpanel"
-              aria-labelledby="info-tab-moves"
-              className="timeline timeline--embedded"
-            >
-              <h3>Move log</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>White</th>
-                    <th>Black</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {moveRows.length === 0 ? (
+            {infoTab === 'moves' ? (
+              <div
+                id="info-panel-moves"
+                role="tabpanel"
+                aria-labelledby="info-tab-moves"
+                className="timeline timeline--embedded"
+              >
+                <h3>Move log</h3>
+                <table>
+                  <thead>
                     <tr>
-                      <td colSpan={3} className="timeline__empty">
-                        Your captures trigger onchain fireworks. Start with the first move.
-                      </td>
+                      <th>#</th>
+                      <th>White</th>
+                      <th>Black</th>
                     </tr>
-                  ) : (
-                    moveRows.map((row) => (
-                      <tr key={row.move}>
-                        <td>{row.move}</td>
-                        <td>{row.white ?? '—'}</td>
-                        <td>{row.black ?? '—'}</td>
+                  </thead>
+                  <tbody>
+                    {moveRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="timeline__empty">
+                          Your captures trigger onchain fireworks. Start with the first move.
+                        </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div
-              id="info-panel-leaderboard"
-              role="tabpanel"
-              aria-labelledby="info-tab-leaderboard"
-              className="info-card__panel"
-            >
-              <Leaderboard entries={leaderboard} variant="embedded" />
-            </div>
-          )}
-        </section>
+                    ) : (
+                      moveRows.map((row) => (
+                        <tr key={row.move}>
+                          <td>{row.move}</td>
+                          <td>{row.white ?? '—'}</td>
+                          <td>{row.black ?? '—'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div
+                id="info-panel-leaderboard"
+                role="tabpanel"
+                aria-labelledby="info-tab-leaderboard"
+                className="info-card__panel"
+              >
+                <Leaderboard entries={leaderboard} variant="embedded" />
+              </div>
+            )}
+          </div>
+        </details>
 
         {captureLog.length > 0 && (
-          <section className="ledger" aria-label="Onchain capture ledger">
-            <h3>Capture ledger</h3>
+          <details className="ledger" aria-label="Onchain capture ledger">
+            <summary className="ledger__summary">
+              <span>Capture ledger</span>
+              <span className="ledger__summary-pill">{captureLog.length}</span>
+            </summary>
             <ul>
               {captureLog.map((entry) => (
                 <li key={entry.id}>
@@ -867,8 +882,17 @@ function App() {
                 </li>
               ))}
             </ul>
-          </section>
+          </details>
         )}
+
+        <section
+          ref={topLeaderboardRef}
+          className="leaderboard-block"
+          aria-label="Top leaderboard"
+        >
+          <h2 className="leaderboard-block__title">Current standings</h2>
+          <Leaderboard entries={leaderboard} variant="embedded" />
+        </section>
       </div>
       {pendingCapture && address && (
         <CaptureTransactionPanel

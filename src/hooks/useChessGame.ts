@@ -1,7 +1,7 @@
 import { Chess } from 'chess.js'
 import type { Move, Square } from 'chess.js'
 import type { PieceDropHandlerArgs } from 'react-chessboard'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 export type CaptureEvent = {
   move: Move
@@ -30,6 +30,38 @@ export function useChessGame() {
   } | null>(null)
   const [captures, setCaptures] = useState<CapturedPieces>(initialCaptures)
   const [lastCapture, setLastCapture] = useState<CaptureEvent | null>(null)
+  const positionCountsRef = useRef<Map<string, number>>(new Map())
+  const [repetitionCount, setRepetitionCount] = useState(1)
+
+  const updatePositionCountsAfterMove = useCallback(() => {
+    const fen = chessRef.current.fen()
+    const current = positionCountsRef.current.get(fen) ?? 0
+    const next = current + 1
+    positionCountsRef.current.set(fen, next)
+    setRepetitionCount(next)
+  }, [])
+
+  const rebuildPositionCounts = useCallback(() => {
+    const sanMoves = chessRef.current.history()
+    const temp = new Chess()
+    const nextCounts = new Map<string, number>()
+    nextCounts.set(temp.fen(), 1)
+    sanMoves.forEach((san) => {
+      temp.move(san)
+      const fen = temp.fen()
+      const current = nextCounts.get(fen) ?? 0
+      nextCounts.set(fen, current + 1)
+    })
+    positionCountsRef.current = nextCounts
+    const currentFen = chessRef.current.fen()
+    setRepetitionCount(nextCounts.get(currentFen) ?? 1)
+  }, [])
+
+  useEffect(() => {
+    const startingFen = chessRef.current.fen()
+    positionCountsRef.current = new Map([[startingFen, 1]])
+    setRepetitionCount(1)
+  }, [])
 
   const buildHistory = useCallback(() => {
     const verboseHistory = chessRef.current.history({ verbose: true }) as Move[]
@@ -44,6 +76,7 @@ export function useChessGame() {
 
       setPosition(chessRef.current.fen())
       buildHistory()
+      updatePositionCountsAfterMove()
 
       const fromSquare = squares?.from ?? (move.from as Square)
       const toSquare = squares?.to ?? (move.to as Square)
@@ -65,7 +98,7 @@ export function useChessGame() {
 
       return true
     },
-    [buildHistory],
+    [buildHistory, updatePositionCountsAfterMove],
   )
 
   const handleDrop: DropHandler = useCallback(
@@ -98,6 +131,8 @@ export function useChessGame() {
     setCaptures(initialCaptures)
     setLastMoveSquares(null)
     setLastCapture(null)
+    positionCountsRef.current = new Map([[chessRef.current.fen(), 1]])
+    setRepetitionCount(1)
     buildHistory()
   }, [buildHistory])
 
@@ -108,6 +143,7 @@ export function useChessGame() {
     }
     setPosition(chessRef.current.fen())
     buildHistory()
+    rebuildPositionCounts()
 
     if (undone.captured) {
       const capturedBy = undone.color === 'w' ? 'white' : 'black'
@@ -125,7 +161,7 @@ export function useChessGame() {
         : null,
     )
     setLastCapture(null)
-  }, [buildHistory])
+  }, [buildHistory, rebuildPositionCounts])
 
   const status = useMemo(() => {
     const moveCount = history.length
@@ -184,5 +220,6 @@ export function useChessGame() {
     getLatestSan,
     getCurrentFen,
     getLegalMoves,
+    repetitionCount,
   }
 }
