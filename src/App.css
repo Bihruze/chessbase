@@ -385,6 +385,8 @@ body {
   max-height: min(72vh, 640px);
   margin: 0 auto;
   flex: 0 0 auto;
+  touch-action: none;
+  overscroll-behavior: contain;
 }
 
 .board-card__board .react-chessboard {
