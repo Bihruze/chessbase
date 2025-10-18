@@ -348,10 +348,11 @@ function App() {
     const computeBoardSize = () => {
       const rect = node.getBoundingClientRect()
       const width = rect.width
-      if (width <= 0) {
+      const height = rect.height || width
+      if (width <= 0 || height <= 0) {
         return
       }
-      const raw = Math.min(width, 424)
+      const raw = Math.min(width, height, 424)
       const squareSize = Math.max(1, Math.floor(raw / 8))
       const snapped = squareSize * 8
       setBoardSize(snapped)
