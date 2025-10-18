@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Connector } from 'wagmi'
 import { useAccount, useConnect, useDisconnect } from 'wagmi'
 import { useMiniKit } from '@coinbase/onchainkit/minikit'
-import { shortenHex } from '../utils/strings'
 
 const FARCASTER_CONNECTOR_ID = 'farcaster'
 
@@ -85,9 +84,10 @@ export function WalletControls() {
   }
 
   if (address && isConnected) {
+    const addressSuffix = address.slice(-2)
     return (
       <div className="wallet-chip">
-        <span title={address}>Connected {shortenHex(address, 5)}</span>
+        <span title={address}>Connected {addressSuffix}</span>
         <button
           type="button"
           className="wallet-chip__disconnect"
@@ -105,15 +105,8 @@ export function WalletControls() {
     ? `Connecting ${resolveConnectorLabel(activeConnector)}...`
     : 'Connecting...'
 
-  const singleConnector = uniqueConnectors.length === 1 ? uniqueConnectors[0] : undefined
-
   const handleConnectClick = () => {
     if (isPending || uniqueConnectors.length === 0) {
-      return
-    }
-
-    if (singleConnector) {
-      void handleConnect(singleConnector)
       return
     }
 
@@ -130,7 +123,7 @@ export function WalletControls() {
       >
         {isPending ? pendingLabel : 'Connect wallet'}
       </button>
-      {menuOpen && uniqueConnectors.length > 1 ? (
+      {menuOpen && uniqueConnectors.length > 0 ? (
         <div className="wallet-connect__menu">
           {uniqueConnectors.map((connector) => {
             const label = resolveConnectorLabel(connector)

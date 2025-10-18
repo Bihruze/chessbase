@@ -740,33 +740,6 @@ function App() {
             </div>
           )}
 
-          <div className="board-card__controls" role="group" aria-label="Board actions">
-            <button type="button" onClick={handleNewGame}>
-              New game
-            </button>
-            {hasSessionStarted ? (
-              <>
-                <button
-                  type="button"
-                  className="board-card__share"
-                  onClick={handleShare}
-                  disabled={matchStatus === 'searching'}
-                >
-                  Share game
-                </button>
-                <button type="button" onClick={undoMove} disabled={!history.length}>
-                  Undo move
-                </button>
-                <button type="button" onClick={toggleOrientation}>
-                  Flip board
-                </button>
-              </>
-            ) : null}
-            <button type="button" onClick={scrollToLeaderboard}>
-              View leaderboard
-            </button>
-          </div>
-
           <div
             className={`board-card__board${hasSessionStarted ? '' : ' board-card__board--locked'}`}
             ref={boardContainerRef}
@@ -791,6 +764,33 @@ function App() {
                 </div>
               )
             )}
+          </div>
+
+          <div className="board-card__controls" role="group" aria-label="Board actions">
+            <button type="button" onClick={handleNewGame}>
+              New game
+            </button>
+            {hasSessionStarted ? (
+              <>
+                <button
+                  type="button"
+                  className="board-card__share"
+                  onClick={handleShare}
+                  disabled={matchStatus === 'searching'}
+                >
+                  Share game
+                </button>
+                <button type="button" onClick={undoMove} disabled={!history.length}>
+                  Undo move
+                </button>
+                <button type="button" onClick={toggleOrientation}>
+                  Flip board
+                </button>
+              </>
+            ) : null}
+            <button type="button" className="board-card__leaderboard" onClick={scrollToLeaderboard}>
+              View leaderboard
+            </button>
           </div>
           {mateBanner ? (
             <div
