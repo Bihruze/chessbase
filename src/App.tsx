@@ -181,10 +181,6 @@ function App() {
     setCaptureError(null)
   }, [])
 
-  const scrollToLeaderboard = useCallback(() => {
-    topLeaderboardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [])
-
   const handleNewGame = useCallback(() => {
     setHasSessionStarted(true)
     setMateBanner(null)
