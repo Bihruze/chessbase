@@ -318,15 +318,63 @@ function App() {
     clearMoveHints()
   }, [clearMoveHints])
 
+  const attemptBoardMove = useCallback(
+    (fromSquare: string, toSquare: string) => {
+      if (!fromSquare || !toSquare) {
+        return false
+      }
+      const legalMove = getLegalMoves().find(
+        (move) => move.from === fromSquare && move.to === toSquare,
+      )
+      if (!legalMove) {
+        return false
+      }
+      const moveColor = legalMove.color === 'w' ? 'white' : 'black'
+      if (moveColor !== playerColor) {
+        return false
+      }
+      const pieceType = `${legalMove.color}${legalMove.piece.toUpperCase()}`
+      return handlePlayerDrop({
+        piece: {
+          isSparePiece: false,
+          position: fromSquare,
+          pieceType,
+        },
+        sourceSquare: fromSquare,
+        targetSquare: toSquare,
+      })
+    },
+    [getLegalMoves, handlePlayerDrop, playerColor],
+  )
+
   const handleSquareClick = useCallback(
-    ({ square }: SquareHandlerArgs) => {
-      if (selectedSquare === square) {
-        clearMoveHints()
+    ({ square, piece }: SquareHandlerArgs) => {
+      if (!square) {
         return
       }
-      showMoveHints(square, 'select')
+
+      if (selectedSquare) {
+        if (selectedSquare === square) {
+          clearMoveHints()
+          return
+        }
+
+        const moved = attemptBoardMove(selectedSquare, square)
+        if (moved) {
+          return
+        }
+      }
+
+      const pieceType = piece?.pieceType ?? ''
+      const isPlayerPiece = pieceType.startsWith(playerColor === 'white' ? 'w' : 'b')
+      if (isPlayerPiece) {
+        showMoveHints(square, 'select')
+        return
+      }
+
+      clearMoveHints()
     },
-    [clearMoveHints, selectedSquare, showMoveHints],
+    [attemptBoardMove, clearMoveHints, playerColor, selectedSquare, showMoveHints],
   )
 
   const handleSquareMouseOver = useCallback(
