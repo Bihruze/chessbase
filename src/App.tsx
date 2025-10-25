@@ -318,6 +318,44 @@ function App() {
     clearMoveHints()
   }, [clearMoveHints])
 
+  const handlePlayerDrop = useCallback(
+    (args: PieceDropHandlerArgs) => {
+      clearMoveHints()
+      if (matchStatus !== 'matched' && matchStatus !== 'bot') {
+        return false
+      }
+
+      const pieceCode = args.piece?.pieceType ?? ''
+      if (!pieceCode) {
+        return false
+      }
+      const pieceColor = pieceCode.startsWith('w') ? 'white' : 'black'
+      if (pieceColor !== playerColor) {
+        return false
+      }
+
+      const turnColor = turn === 'w' ? 'white' : 'black'
+      if (turnColor !== playerColor) {
+        return false
+      }
+
+      const moveApplied = onPieceDrop(args)
+      if (!moveApplied) {
+        return false
+      }
+
+      const san = getLatestSan()
+      const fen = getCurrentFen()
+
+      if (san && opponentType === 'human' && matchStatus === 'matched') {
+        emitMove(san, fen)
+      }
+
+      return true
+    },
+    [clearMoveHints, emitMove, getCurrentFen, getLatestSan, matchStatus, onPieceDrop, opponentType, playerColor, turn],
+  )
+
   const attemptBoardMove = useCallback(
     (fromSquare: string, toSquare: string) => {
       if (!fromSquare || !toSquare) {
@@ -677,44 +715,6 @@ function App() {
       opponentIcons: renderIcons(opponentPieces, 'opponent'),
     }
   }, [captures, playerColor])
-
-  const handlePlayerDrop = useCallback(
-    (args: PieceDropHandlerArgs) => {
-      clearMoveHints()
-      if (matchStatus !== 'matched' && matchStatus !== 'bot') {
-        return false
-      }
-
-      const pieceCode = args.piece?.pieceType ?? ''
-      if (!pieceCode) {
-        return false
-      }
-      const pieceColor = pieceCode.startsWith('w') ? 'white' : 'black'
-      if (pieceColor !== playerColor) {
-        return false
-      }
-
-      const turnColor = turn === 'w' ? 'white' : 'black'
-      if (turnColor !== playerColor) {
-        return false
-      }
-
-      const moveApplied = onPieceDrop(args)
-      if (!moveApplied) {
-        return false
-      }
-
-      const san = getLatestSan()
-      const fen = getCurrentFen()
-
-      if (san && opponentType === 'human' && matchStatus === 'matched') {
-        emitMove(san, fen)
-      }
-
-      return true
-    },
-    [clearMoveHints, emitMove, getCurrentFen, getLatestSan, matchStatus, onPieceDrop, opponentType, playerColor, turn],
-  )
 
   const highlightStyles = useMemo<Record<string, CSSProperties> | undefined>(() => {
     if (!lastMoveSquares) {
