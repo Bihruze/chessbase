@@ -82,6 +82,8 @@ const formatTxHash = (value: string) => (value.startsWith('0x') ? shortenHex(val
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as Hex
 
+type AppView = 'lobby' | 'board' | 'moves' | 'captures' | 'leaderboard'
+
 function App() {
   const miniKit = useMiniKit()
   const { context, setMiniAppReady } = miniKit
@@ -112,23 +114,23 @@ function App() {
   const { leaderboard, mergeChainEntry } = useLeaderboard()
   const [boardOrientation, setBoardOrientation] = useState<'white' | 'black'>('white')
   const [boardSize, setBoardSize] = useState(320)
-  const [isCompactLayout, setIsCompactLayout] = useState(false)
-  const [infoExpanded, setInfoExpanded] = useState(true)
   const isSponsored = Boolean(env.onchainKitApiKey)
   const [shareHint, setShareHint] = useState<string | null>(null)
   const [mateBanner, setMateBanner] = useState<
     { text: string; variant: 'win' | 'loss' | 'draw' } | null
   >(null)
   const [botDifficulty, setBotDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium')
-  const [infoTab, setInfoTab] = useState<'moves' | 'leaderboard'>('moves')
   const [moveHints, setMoveHints] = useState<Record<string, CSSProperties>>({})
   const [selectedSquare, setSelectedSquare] = useState<string | null>(null)
   const [hoveredSquare, setHoveredSquare] = useState<string | null>(null)
   const [hasSessionStarted, setHasSessionStarted] = useState(false)
+  const [activeView, setActiveView] = useState<AppView>('lobby')
+  const [pendingInviteId, setPendingInviteId] = useState<string | null>(null)
+  const [inviteLink, setInviteLink] = useState<string | null>(null)
   const captureTarget = (env.captureTarget ?? DEFAULT_CAPTURE_CONTRACT) as Hex
   const containerRef = useRef<HTMLDivElement | null>(null)
   const boardContainerRef = useRef<HTMLDivElement | null>(null)
-  const topLeaderboardRef = useRef<HTMLDivElement | null>(null)
+  const autoJoinInviteRef = useRef(false)
 
   const handleOpponentMove = useCallback(
     (san: string, fen: string) => {
@@ -146,8 +148,24 @@ function App() {
     status: matchStatus,
     emitMove,
     startBotMatch,
+    beginQuickMatch,
+    cancelMatchmaking,
+    createInvite,
+    joinInvite,
+    availableMatches,
+    matchId,
   } = useMatchmaking({ onOpponentMove: handleOpponentMove })
   const botTurnColor = playerColor === 'white' ? 'b' : 'w'
+  const baseShareUrl = useMemo(() => {
+    if (typeof window === 'undefined' || !window.location) {
+      return APP_URL
+    }
+    return `${window.location.origin}${window.location.pathname}`
+  }, [])
+  const buildInviteLink = useCallback(
+    (id: string) => `${baseShareUrl}?invite=${id}`,
+    [baseShareUrl],
+  )
 
   const handleCaptureComplete = useCallback(
     (entry: CaptureLogEntry) => {
@@ -181,24 +199,100 @@ function App() {
     setCaptureError(null)
   }, [])
 
-  const handleNewGame = useCallback(() => {
-    setHasSessionStarted(true)
+  const resetBoardState = useCallback(() => {
     setMateBanner(null)
     drawNotifiedRef.current = false
     resetGame()
   }, [resetGame])
 
+  const handleNewGame = useCallback(() => {
+    cancelMatchmaking('restart')
+    setPendingInviteId(null)
+    setInviteLink(null)
+    setHasSessionStarted(false)
+    setShareHint(null)
+    setActiveView('lobby')
+    resetBoardState()
+  }, [cancelMatchmaking, resetBoardState])
+
+  const handleBeginInvite = useCallback(() => {
+    resetBoardState()
+    const inviteId = createInvite()
+    const link = buildInviteLink(inviteId)
+    setPendingInviteId(inviteId)
+    setInviteLink(link)
+    setShareHint(null)
+    setHasSessionStarted(true)
+    setActiveView('board')
+  }, [buildInviteLink, createInvite, resetBoardState])
+
+  const handleBeginQuickMatch = useCallback(() => {
+    resetBoardState()
+    setPendingInviteId(null)
+    setInviteLink(null)
+    setShareHint(null)
+    setHasSessionStarted(true)
+    beginQuickMatch()
+    setActiveView('board')
+  }, [beginQuickMatch, resetBoardState])
+
+  const handleBeginBotMatch = useCallback(() => {
+    resetBoardState()
+    setPendingInviteId(null)
+    setInviteLink(null)
+    setShareHint(null)
+    setHasSessionStarted(true)
+    startBotMatch()
+    setActiveView('board')
+  }, [resetBoardState, startBotMatch])
+
+  const canPlay = matchStatus === 'matched' || matchStatus === 'bot'
+  const isAwaitingMatch =
+    matchStatus === 'inviting' || matchStatus === 'searching' || matchStatus === 'joining'
+  const handleCancelMatch = useCallback(() => {
+    cancelMatchmaking('user-cancel')
+    setPendingInviteId(null)
+    setInviteLink(null)
+    setShareHint(null)
+    resetBoardState()
+    setHasSessionStarted(false)
+    setActiveView('lobby')
+  }, [cancelMatchmaking, resetBoardState])
+  const waitingMessage = useMemo(() => {
+    if (matchStatus === 'inviting') {
+      return 'Share your invite link so a friend can join as black.'
+    }
+    if (matchStatus === 'searching') {
+      return availableMatches > 0
+        ? 'Another player is loading in — finalising your match…'
+        : 'Searching for active Base players…'
+    }
+    if (matchStatus === 'joining') {
+      return 'Connecting to the host — sit tight.'
+    }
+    return null
+  }, [availableMatches, matchStatus])
+
+  const resolveShareUrl = useCallback(() => {
+    if (matchStatus === 'inviting' && matchId) {
+      return { url: buildInviteLink(matchId), isInvite: true }
+    }
+    if (pendingInviteId && inviteLink) {
+      return { url: inviteLink, isInvite: true }
+    }
+    return { url: baseShareUrl, isInvite: false }
+  }, [baseShareUrl, buildInviteLink, inviteLink, matchId, matchStatus, pendingInviteId])
+
   const handleShare = useCallback(async () => {
-    if (!hasSessionStarted) {
-      setShareHint('Start a new game to share your match.')
+    const { url: shareUrl, isInvite } = resolveShareUrl()
+    if (!hasSessionStarted && !isInvite) {
+      setShareHint('Pick a mode to generate a match link.')
       return
     }
 
-    const shareUrl =
-      typeof window !== 'undefined' && window.location
-        ? window.location.href
-        : APP_URL
-    const shareText = `♟️ Playing ${APP_NAME} on Base — take your shot!`
+    const shareText = isInvite
+      ? `♟️ Challenge me on ${APP_NAME}! Join my board:`
+      : `♟️ Playing ${APP_NAME} on Base — take your shot!`
 
     try {
       if (typeof navigator !== 'undefined' && navigator.share) {
@@ -207,22 +301,39 @@ function App() {
           text: shareText,
           url: shareUrl,
         })
-        setShareHint('Shared via device sheet')
+        setShareHint(isInvite ? 'Invite shared via device sheet' : 'Shared via device sheet')
         return
       }
 
       if (typeof navigator !== 'undefined' && navigator.clipboard) {
         await navigator.clipboard.writeText(shareUrl)
-        setShareHint('Link copied to clipboard')
+        setShareHint(isInvite ? 'Invite link copied to clipboard' : 'Link copied to clipboard')
         return
       }
 
-      setShareHint(`Share this link manually: ${shareUrl}`)
+      setShareHint(
+        isInvite ? `Invite link: ${shareUrl}` : `Share this link manually: ${shareUrl}`,
+      )
     } catch (error) {
       console.error('share failed', error)
       setShareHint('Sharing failed — try again later')
     }
-  }, [hasSessionStarted])
+  }, [hasSessionStarted, resolveShareUrl])
+
+  useEffect(() => {
+    if (matchStatus !== 'inviting') {
+      if (pendingInviteId || inviteLink) {
+        setPendingInviteId(null)
+        setInviteLink(null)
+      }
+      return
+    }
+    if (matchId && matchId !== pendingInviteId) {
+      const link = buildInviteLink(matchId)
+      setPendingInviteId(matchId)
+      setInviteLink(link)
+    }
+  }, [buildInviteLink, inviteLink, matchId, matchStatus, pendingInviteId])
 
   const clearMoveHints = useCallback(() => {
     setMoveHints({})
@@ -339,6 +450,37 @@ function App() {
   }, [setMiniAppReady])
 
   useEffect(() => {
+    if (hasSessionStarted) {
+      setActiveView((current) => (current === 'lobby' ? 'board' : current))
+    } else {
+      setActiveView('lobby')
+    }
+  }, [hasSessionStarted])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    if (autoJoinInviteRef.current) {
+      return
+    }
+    const params = new URLSearchParams(window.location.search)
+    const inviteParam = params.get('invite')
+    if (!inviteParam) {
+      return
+    }
+    autoJoinInviteRef.current = true
+    resetBoardState()
+    joinInvite(inviteParam)
+    setHasSessionStarted(true)
+    setActiveView('board')
+    const url = new URL(window.location.href)
+    params.delete('invite')
+    url.search = params.toString()
+    window.history.replaceState({}, document.title, url.toString())
+  }, [joinInvite, resetBoardState, setActiveView])
+
+  useEffect(() => {
     if (typeof window === 'undefined') {
       return
     }
@@ -366,7 +508,6 @@ function App() {
       const boardPixels = Math.max(240, Math.floor(Math.min(raw, squareSize * 8)))
 
       setBoardSize(boardPixels)
-      setIsCompactLayout(width < 420)
     }
 
     computeBoardSize()
@@ -380,10 +521,6 @@ function App() {
     window.addEventListener('resize', computeBoardSize)
     return () => window.removeEventListener('resize', computeBoardSize)
   }, [])
-
-  useEffect(() => {
-    setInfoExpanded(!isCompactLayout)
-  }, [isCompactLayout])
 
   useEffect(() => {
     if (!hasSessionStarted && history.length > 0) {
@@ -413,7 +550,7 @@ function App() {
     if (opponentType !== 'bot') {
       return
     }
-    if (matchStatus === 'searching') {
+    if (matchStatus !== 'bot') {
       return
     }
     if (turn !== botTurnColor) {
@@ -449,7 +586,7 @@ function App() {
       return
     }
 
-    if (matchStatus === 'searching') {
+    if (!canPlay) {
       return
     }
 
@@ -466,7 +603,7 @@ function App() {
     const moveNumber = Math.ceil(history.length / 2)
     setPendingCapture({ id, event: lastCapture, moveNumber, halfMoveIndex: history.length })
     setCaptureError(null)
-  }, [history, lastCapture, matchStatus, playerColor])
+  }, [canPlay, history, lastCapture, playerColor])
 
   useEffect(() => {
     if (!pendingCapture) {
@@ -565,8 +702,8 @@ function App() {
   const handlePlayerDrop = useCallback(
     (args: PieceDropHandlerArgs) => {
       clearMoveHints()
-      if (matchStatus === 'searching') {
-        startBotMatch()
+      if (matchStatus !== 'matched' && matchStatus !== 'bot') {
+        return false
       }
 
       const pieceCode = args.piece?.pieceType ?? ''
@@ -597,7 +734,7 @@ function App() {
 
       return true
     },
-    [clearMoveHints, emitMove, getCurrentFen, getLatestSan, matchStatus, onPieceDrop, opponentType, playerColor, startBotMatch, turn],
+    [clearMoveHints, emitMove, getCurrentFen, getLatestSan, matchStatus, onPieceDrop, opponentType, playerColor, turn],
   )
 
   const highlightStyles = useMemo<Record<string, CSSProperties> | undefined>(() => {
@@ -637,7 +774,7 @@ function App() {
       animationDurationInMs: 180,
       showNotation: true,
       allowDragOffBoard: false,
-      allowDragging: matchStatus !== 'searching',
+      allowDragging: canPlay,
       onPieceDrop: handlePlayerDrop,
       onPieceDragBegin: handlePieceDragBegin,
       onPieceDragEnd: handlePieceDragEnd,
@@ -654,7 +791,7 @@ function App() {
       handleSquareMouseOver,
       handlePlayerDrop,
       handleSquareClick,
-      matchStatus,
+      canPlay,
       position,
       squareStyles,
     ],
@@ -689,6 +826,264 @@ function App() {
     setBoardOrientation((current) => (current === 'white' ? 'black' : 'white'))
   }
 
+  const shareButtonDisabled = matchStatus === 'searching' || matchStatus === 'joining'
+
+  const lobbyPanel = (
+    <section className="board-card lobby-card" aria-label="Match setup">
+      <div className="lobby-card__content">
+        <span className="lobby-card__eyebrow">Choose a mode</span>
+        <h2>Invite friends or battle Base players.</h2>
+        <p>Select how you want to start your next chess session.</p>
+        <div className="board-card__starter-actions">
+          <button
+            type="button"
+            onClick={handleBeginInvite}
+            className="board-card__starter-button"
+          >
+            Invite a friend
+          </button>
+          <button
+            type="button"
+            onClick={handleBeginQuickMatch}
+            className="board-card__starter-button"
+            disabled={matchStatus === 'searching' || matchStatus === 'joining'}
+          >
+            {availableMatches > 0
+              ? `Join active player (${availableMatches})`
+              : 'Join active player'}
+          </button>
+          <button
+            type="button"
+            onClick={handleBeginBotMatch}
+            className="board-card__starter-button"
+          >
+            Play Base Bot
+          </button>
+        </div>
+        <p className="lobby-card__note">
+          {availableMatches > 0
+            ? `Ready players waiting: ${availableMatches}. Jump in and claim white or black.`
+            : 'Share an invite or queue up to find a live opponent.'}
+        </p>
+      </div>
+    </section>
+  )
+
+  const boardPanel = (
+    <section className="board-card" aria-label="Chess board">
+      <div className="player-strip">
+        <div>
+          <span className="player-strip__label">{opponentColorLabel}</span>
+          <h2 className="player-strip__name">{opponentDisplayName}</h2>
+        </div>
+        <div className="player-strip__captures" aria-label="Pieces captured by opponent">
+          {captureSummary.opponentIcons.length ? (
+            captureSummary.opponentIcons
+          ) : (
+            <span className="player-strip__empty">No captures yet</span>
+          )}
+        </div>
+      </div>
+
+      {opponentType === 'bot' && (
+        <div className="bot-difficulty" role="group" aria-label="Bot difficulty">
+          {(['easy', 'medium', 'hard'] as const).map((level) => (
+            <button
+              key={level}
+              type="button"
+              className={`bot-difficulty__option${botDifficulty === level ? ' bot-difficulty__option--active' : ''}`}
+              onClick={() => setBotDifficulty(level)}
+              aria-pressed={botDifficulty === level}
+            >
+              {level.charAt(0).toUpperCase() + level.slice(1)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div
+        className={`board-card__board${canPlay ? '' : ' board-card__board--locked'}`}
+        ref={boardContainerRef}
+      >
+        <Chessboard options={chessboardOptions} />
+        {isAwaitingMatch ? (
+          <div className="board-card__starter" role="status">
+            <span className="board-card__starter-eyebrow">
+              {matchStatus === 'inviting' ? 'Waiting for your friend' : 'Matchmaking'}
+            </span>
+            <h3>
+              {matchStatus === 'inviting'
+                ? 'Send the invite link to begin.'
+                : matchStatus === 'searching'
+                  ? 'Looking for another Base player…'
+                  : 'Joining the board…'}
+            </h3>
+            {waitingMessage ? <p>{waitingMessage}</p> : null}
+            {matchStatus === 'inviting' && inviteLink ? (
+              <div className="board-card__invite">
+                <code>{inviteLink}</code>
+                <button
+                  type="button"
+                  onClick={handleShare}
+                  className="board-card__starter-button"
+                >
+                  Copy invite link
+                </button>
+              </div>
+            ) : null}
+            <button type="button" onClick={handleCancelMatch} className="board-card__starter-cancel">
+              Cancel
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="board-card__controls" role="group" aria-label="Board actions">
+        <button type="button" onClick={handleNewGame}>
+          New game
+        </button>
+        {hasSessionStarted ? (
+          <>
+            <button
+              type="button"
+              className="board-card__share"
+              onClick={handleShare}
+              disabled={shareButtonDisabled}
+            >
+              Share game
+            </button>
+            <button type="button" onClick={undoMove} disabled={!history.length}>
+              Undo move
+            </button>
+            <button type="button" onClick={toggleOrientation}>
+              Flip board
+            </button>
+          </>
+        ) : null}
+      </div>
+      {mateBanner ? (
+        <div
+          className={`board-card__banner board-card__banner--${mateBanner.variant}`}
+          role="status"
+        >
+          {mateBanner.text}
+        </div>
+      ) : null}
+
+      <div className="player-strip">
+        <div>
+          <span className="player-strip__label">{playerColorLabel}</span>
+          <h2 className="player-strip__name">{userDisplayName}</h2>
+        </div>
+        <div className="player-strip__captures" aria-label="Pieces captured by you">
+          {captureSummary.playerIcons.length ? (
+            captureSummary.playerIcons
+          ) : (
+            <span className="player-strip__empty">Take your first piece</span>
+          )}
+        </div>
+      </div>
+
+      <p className="board-card__note" aria-live="polite">
+        {lastCaptureCopy}
+      </p>
+      {shareHint ? (
+        <p className="board-card__hint" aria-live="polite">
+          {shareHint}
+        </p>
+      ) : null}
+    </section>
+  )
+
+  const movesPanel = (
+    <section className="timeline timeline--page" aria-label="Move log">
+      <h2>Move log</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>White</th>
+            <th>Black</th>
+          </tr>
+        </thead>
+        <tbody>
+          {moveRows.length === 0 ? (
+            <tr>
+              <td colSpan={3} className="timeline__empty">
+                Your captures trigger onchain fireworks. Start with the first move.
+              </td>
+            </tr>
+          ) : (
+            moveRows.map((row) => (
+              <tr key={row.move}>
+                <td>{row.move}</td>
+                <td>{row.white ?? '—'}</td>
+                <td>{row.black ?? '—'}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </section>
+  )
+
+  const capturesPanel = (
+    <section className="ledger ledger--page" aria-label="Capture ledger">
+      <div className="ledger__header">
+        <h2>Capture ledger</h2>
+        <span className="ledger__summary-pill">{captureLog.length}</span>
+      </div>
+      {captureLog.length > 0 ? (
+        <ul>
+          {captureLog.map((entry) => (
+            <li key={entry.id}>
+              <div className="ledger__details">
+                <span className="ledger__move">Move {entry.moveNumber}</span>
+                <span className="ledger__san">
+                  {entry.san}{' '}
+                  {formatCaptureIcon(entry.piece || 'p', inferCapturedColor(entry.piece))}
+                  <span className="ledger__square">@{entry.square}</span>
+                </span>
+              </div>
+              <a
+                className="ledger__link"
+                href={getExplorerTxUrl(entry.txHash)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {formatTxHash(entry.txHash)}
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="ledger__empty">No onchain captures yet — claim a piece to light up Base.</p>
+      )}
+    </section>
+  )
+
+  const leaderboardPanel = (
+    <section className="leaderboard-panel" aria-label="Leaderboard">
+      <h2>Current standings</h2>
+      <Leaderboard entries={leaderboard} variant="embedded" />
+    </section>
+  )
+
+  const navItems: Array<{ id: AppView; label: string; badge?: string }> = [
+    { id: 'board', label: 'Board' },
+    {
+      id: 'moves',
+      label: 'Moves',
+      badge: moveRows.length > 0 ? `${moveRows.length}` : undefined,
+    },
+    {
+      id: 'captures',
+      label: 'Captures',
+      badge: captureLog.length > 0 ? `${captureLog.length}` : undefined,
+    },
+    { id: 'leaderboard', label: 'Leaderboard' },
+  ]
+
   return (
     <div className="app" style={containerStyle}>
       <div className="app__container" ref={containerRef}>
@@ -702,242 +1097,28 @@ function App() {
           </div>
         </header>
 
-        <section className="board-card" aria-label="Chess board">
-          <div className="player-strip">
-            <div>
-              <span className="player-strip__label">{opponentColorLabel}</span>
-              <h2 className="player-strip__name">{opponentDisplayName}</h2>
-            </div>
-            <div className="player-strip__captures" aria-label="Pieces captured by opponent">
-              {captureSummary.opponentIcons.length ? (
-                captureSummary.opponentIcons
-              ) : (
-                <span className="player-strip__empty">No captures yet</span>
-              )}
-            </div>
-          </div>
-
-          {opponentType === 'bot' && (
-            <div className="bot-difficulty" role="group" aria-label="Bot difficulty">
-              {(['easy', 'medium', 'hard'] as const).map((level) => (
-                <button
-                  key={level}
-                  type="button"
-                  className={`bot-difficulty__option${botDifficulty === level ? ' bot-difficulty__option--active' : ''}`}
-                  onClick={() => setBotDifficulty(level)}
-                  aria-pressed={botDifficulty === level}
-                >
-                  {level.charAt(0).toUpperCase() + level.slice(1)}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div
-            className={`board-card__board${hasSessionStarted ? '' : ' board-card__board--locked'}`}
-            ref={boardContainerRef}
-          >
-            <Chessboard options={chessboardOptions} />
-            {!hasSessionStarted ? (
-              <div className="board-card__starter" role="presentation">
-                <span className="board-card__starter-eyebrow">Ready to play?</span>
-                <h3>Launch a new match to unlock the board.</h3>
-                <p>
-                  Start with an empty board, then invite friends or challenge Base Bot. Additional
-                  options unlock once the match begins.
-                </p>
-                <button type="button" onClick={handleNewGame} className="board-card__starter-button">
-                  New game
-                </button>
-              </div>
-            ) : (
-              matchStatus === 'searching' && (
-                <div className="match-overlay" role="status">
-                  <div className="match-overlay__content">Looking for another Base player…</div>
-                </div>
-              )
-            )}
-          </div>
-
-          <div className="board-card__controls" role="group" aria-label="Board actions">
-            <button type="button" onClick={handleNewGame}>
-              New game
-            </button>
-            {hasSessionStarted ? (
-              <>
-                <button
-                  type="button"
-                  className="board-card__share"
-                  onClick={handleShare}
-                  disabled={matchStatus === 'searching'}
-                >
-                  Share game
-                </button>
-                <button type="button" onClick={undoMove} disabled={!history.length}>
-                  Undo move
-                </button>
-                <button type="button" onClick={toggleOrientation}>
-                  Flip board
-                </button>
-              </>
-            ) : null}
-          </div>
-          {mateBanner ? (
-            <div
-              className={`board-card__banner board-card__banner--${mateBanner.variant}`}
-              role="status"
-            >
-              {mateBanner.text}
-            </div>
-          ) : null}
-
-          <div className="player-strip">
-            <div>
-              <span className="player-strip__label">{playerColorLabel}</span>
-              <h2 className="player-strip__name">{userDisplayName}</h2>
-            </div>
-            <div className="player-strip__captures" aria-label="Pieces captured by you">
-              {captureSummary.playerIcons.length ? (
-                captureSummary.playerIcons
-              ) : (
-                <span className="player-strip__empty">Take your first piece</span>
-              )}
-            </div>
-          </div>
-
-          <p className="board-card__note" aria-live="polite">
-            {lastCaptureCopy}
-          </p>
-          {shareHint ? (
-            <p className="board-card__hint" aria-live="polite">
-              {shareHint}
-            </p>
-          ) : null}
-        </section>
-
-        <details
-          className={`info-card${infoExpanded ? ' info-card--open' : ''}`}
-          aria-label="Game insights"
-          open={infoExpanded}
-          onToggle={(event) => setInfoExpanded(event.currentTarget.open)}
-        >
-          <summary className="info-card__summary">
-            <span>Game insights</span>
-            <span className="info-card__summary-pill">{infoTab === 'moves' ? 'Move log' : 'Leaderboard'}</span>
-          </summary>
-          <div className="info-card__content">
-            <div className="info-card__tabs" role="tablist" aria-label="Game information tabs">
+        {hasSessionStarted ? (
+          <nav className="app__nav" aria-label="App sections">
+            {navItems.map((item) => (
               <button
+                key={item.id}
                 type="button"
-                role="tab"
-                id="info-tab-moves"
-                aria-selected={infoTab === 'moves'}
-                aria-controls="info-panel-moves"
-                className={`info-card__tab${infoTab === 'moves' ? ' info-card__tab--active' : ''}`}
-                onClick={() => setInfoTab('moves')}
+                className={`app__nav-button${activeView === item.id ? ' app__nav-button--active' : ''}`}
+                onClick={() => setActiveView(item.id)}
+                aria-current={activeView === item.id ? 'page' : undefined}
               >
-                Move log
+                <span className="app__nav-label">{item.label}</span>
+                {item.badge ? <span className="app__nav-badge">{item.badge}</span> : null}
               </button>
-              <button
-                type="button"
-                role="tab"
-                id="info-tab-leaderboard"
-                aria-selected={infoTab === 'leaderboard'}
-                aria-controls="info-panel-leaderboard"
-                className={`info-card__tab${infoTab === 'leaderboard' ? ' info-card__tab--active' : ''}`}
-                onClick={() => setInfoTab('leaderboard')}
-              >
-                Leaderboard
-              </button>
-            </div>
+            ))}
+          </nav>
+        ) : null}
 
-            {infoTab === 'moves' ? (
-              <div
-                id="info-panel-moves"
-                role="tabpanel"
-                aria-labelledby="info-tab-moves"
-                className="timeline timeline--embedded"
-              >
-                <h3>Move log</h3>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>White</th>
-                      <th>Black</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {moveRows.length === 0 ? (
-                      <tr>
-                        <td colSpan={3} className="timeline__empty">
-                          Your captures trigger onchain fireworks. Start with the first move.
-                        </td>
-                      </tr>
-                    ) : (
-                      moveRows.map((row) => (
-                        <tr key={row.move}>
-                          <td>{row.move}</td>
-                          <td>{row.white ?? '—'}</td>
-                          <td>{row.black ?? '—'}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div
-                id="info-panel-leaderboard"
-                role="tabpanel"
-                aria-labelledby="info-tab-leaderboard"
-                className="info-card__panel"
-              >
-                <Leaderboard entries={leaderboard} variant="embedded" />
-              </div>
-            )}
-          </div>
-        </details>
-
-        {captureLog.length > 0 && (
-          <details className="ledger" aria-label="Onchain capture ledger">
-            <summary className="ledger__summary">
-              <span>Capture ledger</span>
-              <span className="ledger__summary-pill">{captureLog.length}</span>
-            </summary>
-            <ul>
-              {captureLog.map((entry) => (
-                <li key={entry.id}>
-                  <div className="ledger__details">
-                    <span className="ledger__move">Move {entry.moveNumber}</span>
-                    <span className="ledger__san">
-                      {entry.san}{' '}
-                      {formatCaptureIcon(entry.piece || 'p', inferCapturedColor(entry.piece))}
-                      <span className="ledger__square">@{entry.square}</span>
-                    </span>
-                  </div>
-                  <a
-                    className="ledger__link"
-                    href={getExplorerTxUrl(entry.txHash)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {formatTxHash(entry.txHash)}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-
-        <section
-          ref={topLeaderboardRef}
-          className="leaderboard-block"
-          aria-label="Top leaderboard"
-        >
-          <h2 className="leaderboard-block__title">Current standings</h2>
-          <Leaderboard entries={leaderboard} variant="embedded" />
-        </section>
+        {activeView === 'lobby' ? lobbyPanel : null}
+        {activeView === 'board' ? boardPanel : null}
+        {activeView === 'moves' ? movesPanel : null}
+        {activeView === 'captures' ? capturesPanel : null}
+        {activeView === 'leaderboard' ? leaderboardPanel : null}
       </div>
       {pendingCapture && address && (
         <CaptureTransactionPanel
