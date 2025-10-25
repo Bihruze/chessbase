@@ -124,6 +124,7 @@ function App() {
   const [hoveredSquare, setHoveredSquare] = useState<string | null>(null)
   const [hasSessionStarted, setHasSessionStarted] = useState(false)
   const [activeView, setActiveView] = useState<AppView>('lobby')
+  const isBoardView = activeView === 'board'
   const captureTarget = (env.captureTarget ?? DEFAULT_CAPTURE_CONTRACT) as Hex
   const containerRef = useRef<HTMLDivElement | null>(null)
   const boardContainerRef = useRef<HTMLDivElement | null>(null)
@@ -405,15 +406,21 @@ function App() {
       }
 
       const viewportHeight = window.innerHeight
-      const headerHeight = headerRef.current?.getBoundingClientRect().height ?? 0
-      const navHeight = navRef.current?.getBoundingClientRect().height ?? 0
-      const topStripHeight = topPlayerStripRef.current?.getBoundingClientRect().height ?? 0
-      const bottomStripHeight =
-        bottomPlayerStripRef.current?.getBoundingClientRect().height ?? 0
+      const headerHeight = isBoardView ? 0 : (headerRef.current?.getBoundingClientRect().height ?? 0)
+      const navHeight = isBoardView ? 0 : (navRef.current?.getBoundingClientRect().height ?? 0)
+      const topStripHeight = isBoardView
+        ? 0
+        : (topPlayerStripRef.current?.getBoundingClientRect().height ?? 0)
+      const bottomStripHeight = isBoardView
+        ? 0
+        : (bottomPlayerStripRef.current?.getBoundingClientRect().height ?? 0)
       const controlsHeight = boardControlsRef.current?.getBoundingClientRect().height ?? 0
       const bannerHeight = mateBanner ? 36 : 0
       const paddingReserve =
-        (safeInsets?.top ?? 0) + (safeInsets?.bottom ?? 0) + bannerHeight + 56
+        (safeInsets?.top ?? 0) +
+        (safeInsets?.bottom ?? 0) +
+        bannerHeight +
+        (isBoardView ? 28 : 56)
 
       const availableHeight = Math.max(
         220,
@@ -441,7 +448,15 @@ function App() {
 
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [context?.client?.safeAreaInsets?.bottom, context?.client?.safeAreaInsets?.top, mateBanner, matchStatus, availablePlayerLabels.length, hasSessionStarted])
+  }, [
+    context?.client?.safeAreaInsets?.bottom,
+    context?.client?.safeAreaInsets?.top,
+    isBoardView,
+    mateBanner,
+    matchStatus,
+    availablePlayerLabels.length,
+    hasSessionStarted,
+  ])
 
   useEffect(() => {
     if (!hasSessionStarted && history.length > 0) {
@@ -792,71 +807,87 @@ function App() {
 
   const boardPanel = (
     <section className="board-card board-card--full" aria-label="Chess board">
-      <div className="player-strip" ref={topPlayerStripRef}>
-        <div>
-          <span className="player-strip__label">{opponentColorLabel}</span>
-          <h2 className="player-strip__name">{opponentDisplayName}</h2>
-        </div>
-        <div className="player-strip__captures" aria-label="Pieces captured by opponent">
-          {captureSummary.opponentIcons.length ? (
-            captureSummary.opponentIcons
-          ) : (
-            <span className="player-strip__empty">No captures yet</span>
-          )}
-        </div>
-      </div>
-
-      {opponentType === 'bot' && (
-        <div className="bot-difficulty" role="group" aria-label="Bot difficulty">
-          {(['easy', 'medium', 'hard'] as const).map((level) => (
-            <button
-              key={level}
-              type="button"
-              className={`bot-difficulty__option${botDifficulty === level ? ' bot-difficulty__option--active' : ''}`}
-              onClick={() => setBotDifficulty(level)}
-              aria-pressed={botDifficulty === level}
-            >
-              {level.charAt(0).toUpperCase() + level.slice(1)}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div
-        className={`board-card__board${canPlay ? '' : ' board-card__board--locked'}`}
-        ref={boardContainerRef}
-      >
-        <Chessboard options={chessboardOptions} />
-        {isAwaitingMatch ? (
-          <div className="board-card__starter" role="status">
-            <span className="board-card__starter-eyebrow">
-              {matchStatus === 'searching' ? 'Matchmaking' : 'Connecting'}
-            </span>
-            <h3>
-              {matchStatus === 'searching'
-                ? 'Looking for another Base player…'
-                : 'Joining the board…'}
-            </h3>
-            {waitingMessage ? <p>{waitingMessage}</p> : null}
-            {matchStatus === 'searching' && availablePlayerLabels.length > 0 ? (
-              <div className="board-card__queue">
-                <span className="board-card__queue-title">Players ready right now</span>
-                <ul>
-                  {availablePlayerLabels.map((label, index) => (
-                    <li key={`${label}-${index}`}>{label}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            <button
-              type="button"
-              onClick={handleCancelMatch}
-              className="board-card__starter-cancel"
-            >
-              Cancel
-            </button>
+      <div className="board-card__stage">
+        <div className="player-strip player-strip--overlay player-strip--top" ref={topPlayerStripRef}>
+          <div>
+            <span className="player-strip__label">{opponentColorLabel}</span>
+            <h2 className="player-strip__name">{opponentDisplayName}</h2>
           </div>
-        ) : null}
+          <div className="player-strip__captures" aria-label="Pieces captured by opponent">
+            {captureSummary.opponentIcons.length ? (
+              captureSummary.opponentIcons
+            ) : (
+              <span className="player-strip__empty">No captures yet</span>
+            )}
+          </div>
+        </div>
+
+        <div
+          className={`board-card__board${canPlay ? '' : ' board-card__board--locked'}`}
+          ref={boardContainerRef}
+        >
+          <Chessboard options={chessboardOptions} />
+          {isAwaitingMatch ? (
+            <div className="board-card__starter" role="status">
+              <span className="board-card__starter-eyebrow">
+                {matchStatus === 'searching' ? 'Matchmaking' : 'Connecting'}
+              </span>
+              <h3>
+                {matchStatus === 'searching'
+                  ? 'Looking for another Base player…'
+                  : 'Joining the board…'}
+              </h3>
+              {waitingMessage ? <p>{waitingMessage}</p> : null}
+              {matchStatus === 'searching' && availablePlayerLabels.length > 0 ? (
+                <div className="board-card__queue">
+                  <span className="board-card__queue-title">Players ready right now</span>
+                  <ul>
+                    {availablePlayerLabels.map((label, index) => (
+                      <li key={`${label}-${index}`}>{label}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <button
+                type="button"
+                onClick={handleCancelMatch}
+                className="board-card__starter-cancel"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="player-strip player-strip--overlay player-strip--bottom" ref={bottomPlayerStripRef}>
+          <div>
+            <span className="player-strip__label">{playerColorLabel}</span>
+            <h2 className="player-strip__name">{userDisplayName}</h2>
+          </div>
+          <div className="player-strip__captures" aria-label="Pieces captured by you">
+            {captureSummary.playerIcons.length ? (
+              captureSummary.playerIcons
+            ) : (
+              <span className="player-strip__empty">Take your first piece</span>
+            )}
+          </div>
+        </div>
+
+        {opponentType === 'bot' && (
+          <div className="bot-difficulty bot-difficulty--overlay" role="group" aria-label="Bot difficulty">
+            {(['easy', 'medium', 'hard'] as const).map((level) => (
+              <button
+                key={level}
+                type="button"
+                className={`bot-difficulty__option${botDifficulty === level ? ' bot-difficulty__option--active' : ''}`}
+                onClick={() => setBotDifficulty(level)}
+                aria-pressed={botDifficulty === level}
+              >
+                {level.charAt(0).toUpperCase() + level.slice(1)}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="board-card__controls" role="group" aria-label="Board actions" ref={boardControlsRef}>
@@ -885,20 +916,6 @@ function App() {
           {mateBanner.text}
         </div>
       ) : null}
-
-      <div className="player-strip" ref={bottomPlayerStripRef}>
-        <div>
-          <span className="player-strip__label">{playerColorLabel}</span>
-          <h2 className="player-strip__name">{userDisplayName}</h2>
-        </div>
-        <div className="player-strip__captures" aria-label="Pieces captured by you">
-          {captureSummary.playerIcons.length ? (
-            captureSummary.playerIcons
-          ) : (
-            <span className="player-strip__empty">Take your first piece</span>
-          )}
-        </div>
-      </div>
 
       <p className="board-card__note" aria-live="polite">
         {lastCaptureCopy}
@@ -979,8 +996,6 @@ function App() {
       <Leaderboard entries={leaderboard} variant="embedded" />
     </section>
   )
-
-  const isBoardView = activeView === 'board'
 
   const navItems: Array<{ id: AppView; label: string; badge?: string }> = [
     { id: 'board', label: 'Board' },

@@ -44,8 +44,24 @@ body {
   max-width: none;
   min-height: 100dvh;
   margin: 0 auto;
-  padding: clamp(16px, 4vw, 32px);
-  grid-template-rows: auto auto minmax(0, 1fr);
+  padding: clamp(12px, 4vw, 32px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(12px, 2vh, 24px);
+  position: relative;
+}
+
+.app__container--board .app__header,
+.app__container--board .app__nav {
+  display: none;
+}
+
+.app__container--board .board-card {
+  padding: clamp(12px, 3vw, 20px);
+}
+
+.app__container--board .board-card__controls {
+  margin-top: clamp(12px, 2vh, 20px);
 }
 
 @media (max-width: 480px) {
@@ -302,6 +318,16 @@ body {
   overflow: hidden;
 }
 
+.board-card__stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(96px, 18vh, 140px) clamp(14px, 4vw, 32px);
+}
+
 .lobby-card {
   align-items: center;
   text-align: center;
@@ -526,6 +552,23 @@ body {
   color: rgba(148, 163, 184, 0.65);
 }
 
+.player-strip--overlay {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(92vw, 560px);
+  z-index: 5;
+  pointer-events: auto;
+}
+
+.player-strip--top {
+  top: clamp(16px, 4vh, 32px);
+}
+
+.player-strip--bottom {
+  bottom: clamp(16px, 4vh, 32px);
+}
+
 .board-card__board {
   width: 100%;
   display: flex;
@@ -674,6 +717,19 @@ body {
   color: #eef2ff;
 }
 
+.bot-difficulty--overlay {
+  position: absolute;
+  top: 50%;
+  left: clamp(18px, 5vw, 64px);
+  transform: translateY(-50%);
+  flex-direction: column;
+  gap: 8px;
+  z-index: 6;
+  align-items: stretch;
+  margin: 0;
+  justify-content: center;
+}
+
 .board-card__controls {
   display: flex;
   flex-wrap: wrap;
@@ -747,15 +803,36 @@ body {
 }
 
 @media (max-width: 540px) {
+  .board-card__stage {
+    padding: clamp(80px, 16vh, 110px) clamp(10px, 3vw, 20px);
+  }
+
   .board-card__controls button {
     flex: 1 1 calc(50% - 8px);
     min-width: 0;
   }
+
+  .bot-difficulty--overlay {
+    top: auto;
+    bottom: clamp(96px, 20vh, 140px);
+    left: 50%;
+    transform: translate(-50%, 0);
+    flex-direction: row;
+  }
 }
 
 @media (max-width: 360px) {
+  .board-card__stage {
+    padding: clamp(72px, 22vh, 96px) clamp(8px, 3vw, 16px);
+  }
+
   .board-card__controls button {
     flex: 1 1 100%;
+  }
+
+  .bot-difficulty--overlay {
+    gap: 6px;
+    bottom: clamp(88px, 24vh, 132px);
   }
 }
 
