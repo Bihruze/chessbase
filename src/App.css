@@ -1268,11 +1268,20 @@ body {
   margin: 6px 0 4px;
 }
 
-.bot-difficulty--inline {
-  justify-content: flex-start;
-  flex-wrap: wrap;
+.bot-difficulty--overlay {
+  position: absolute;
+  top: clamp(10px, 3vh, 28px);
+  left: 50%;
+  transform: translate(-50%, 0);
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(18, 9, 36, 0.78);
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  box-shadow: 0 12px 28px rgba(10, 3, 24, 0.45);
   gap: 8px;
-  margin-top: 6px;
+  z-index: 6;
+  pointer-events: auto;
 }
 
 .bot-difficulty__option {

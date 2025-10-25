@@ -878,21 +878,6 @@ function App() {
           <div className="player-strip__info">
             <span className="player-strip__label">{opponentColorLabel}</span>
             <h2 className="player-strip__name">{opponentDisplayName}</h2>
-            {opponentType === 'bot' ? (
-              <div className="bot-difficulty bot-difficulty--inline" role="group" aria-label="Bot difficulty">
-                {(['easy', 'medium', 'hard'] as const).map((level) => (
-                  <button
-                    key={level}
-                    type="button"
-                    className={`bot-difficulty__option${botDifficulty === level ? ' bot-difficulty__option--active' : ''}`}
-                    onClick={() => setBotDifficulty(level)}
-                    aria-pressed={botDifficulty === level}
-                  >
-                    {level.charAt(0).toUpperCase() + level.slice(1)}
-                  </button>
-                ))}
-              </div>
-            ) : null}
           </div>
           <div className="player-strip__captures" aria-label="Pieces captured by opponent">
             {captureSummary.opponentIcons.length ? (
@@ -907,6 +892,21 @@ function App() {
           className={`board-card__board${canPlay ? '' : ' board-card__board--locked'}`}
           ref={boardContainerRef}
         >
+          {opponentType === 'bot' ? (
+            <div className="bot-difficulty bot-difficulty--overlay" role="group" aria-label="Bot difficulty">
+              {(['easy', 'medium', 'hard'] as const).map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  className={`bot-difficulty__option${botDifficulty === level ? ' bot-difficulty__option--active' : ''}`}
+                  onClick={() => setBotDifficulty(level)}
+                  aria-pressed={botDifficulty === level}
+                >
+                  {level.charAt(0).toUpperCase() + level.slice(1)}
+                </button>
+              ))}
+            </div>
+          ) : null}
           <Chessboard options={chessboardOptions} />
           {isAwaitingMatch ? (
             <div className="board-card__starter" role="status">
