@@ -131,6 +131,7 @@ function App() {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const boardContainerRef = useRef<HTMLDivElement | null>(null)
   const autoJoinInviteRef = useRef(false)
+  const playerProfileName = context?.user?.displayName ?? context?.user?.username ?? 'Base player'
 
   const handleOpponentMove = useCallback(
     (san: string, fen: string) => {
@@ -154,13 +155,20 @@ function App() {
     joinInvite,
     availableMatches,
     matchId,
-  } = useMatchmaking({ onOpponentMove: handleOpponentMove })
+    opponentLabel,
+    availablePlayerLabels,
+  } = useMatchmaking({ onOpponentMove: handleOpponentMove, playerLabel: playerProfileName })
   const botTurnColor = playerColor === 'white' ? 'b' : 'w'
   const baseShareUrl = useMemo(() => {
-    if (typeof window === 'undefined' || !window.location) {
-      return APP_URL
+    const envUrl = APP_URL && APP_URL !== 'https://example.com' ? APP_URL.trim() : null
+    if (envUrl && envUrl.length > 0) {
+      return envUrl.replace(/\/$/, '')
     }
-    return `${window.location.origin}${window.location.pathname}`
+    if (typeof window === 'undefined' || !window.location) {
+      return 'https://example.com'
+    }
+    const { origin, pathname } = window.location
+    return `${origin}${pathname}`
   }, [])
   const buildInviteLink = useCallback(
     (id: string) => `${baseShareUrl}?invite=${id}`,
@@ -263,15 +271,16 @@ function App() {
       return 'Share your invite link so a friend can join as black.'
     }
     if (matchStatus === 'searching') {
-      return availableMatches > 0
-        ? 'Another player is loading in — finalising your match…'
-        : 'Searching for active Base players…'
+      if (availablePlayerLabels.length > 0) {
+        return `Players queued: ${availablePlayerLabels.join(', ')}`
+      }
+      return 'Searching for active Base players…'
     }
     if (matchStatus === 'joining') {
       return 'Connecting to the host — sit tight.'
     }
     return null
-  }, [availableMatches, matchStatus])
+  }, [availablePlayerLabels, matchStatus])
 
   const resolveShareUrl = useCallback(() => {
     if (matchStatus === 'inviting' && matchId) {
@@ -282,6 +291,37 @@ function App() {
     }
     return { url: baseShareUrl, isInvite: false }
   }, [baseShareUrl, buildInviteLink, inviteLink, matchId, matchStatus, pendingInviteId])
+
+  const copyText = useCallback(async (value: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(value)
+        return true
+      } catch (error) {
+        console.warn('clipboard write failed', error)
+      }
+    }
+
+    if (typeof document === 'undefined') {
+      return false
+    }
+
+    try {
+      const textarea = document.createElement('textarea')
+      textarea.value = value
+      textarea.setAttribute('readonly', '')
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      const success = document.execCommand?.('copy') ?? false
+      document.body.removeChild(textarea)
+      return success
+    } catch (error) {
+      console.warn('fallback copy failed', error)
+      return false
+    }
+  }, [])
 
   const handleShare = useCallback(async () => {
     const { url: shareUrl, isInvite } = resolveShareUrl()
@@ -305,20 +345,42 @@ function App() {
         return
       }
 
-      if (typeof navigator !== 'undefined' && navigator.clipboard) {
-        await navigator.clipboard.writeText(shareUrl)
-        setShareHint(isInvite ? 'Invite link copied to clipboard' : 'Link copied to clipboard')
+      if (await copyText(shareUrl)) {
+        setShareHint(isInvite ? 'Invite link copied to clipboard' : 'Game link copied to clipboard')
         return
       }
 
-      setShareHint(
-        isInvite ? `Invite link: ${shareUrl}` : `Share this link manually: ${shareUrl}`,
-      )
+      setShareHint(isInvite ? `Invite link: ${shareUrl}` : `Share this link manually: ${shareUrl}`)
     } catch (error) {
       console.error('share failed', error)
       setShareHint('Sharing failed — try again later')
     }
-  }, [hasSessionStarted, resolveShareUrl])
+  }, [copyText, hasSessionStarted, resolveShareUrl])
+
+  const handleCopyInvite = useCallback(async () => {
+    const { url: shareUrl, isInvite } = resolveShareUrl()
+    const copied = await copyText(shareUrl)
+    if (copied) {
+      setShareHint(isInvite ? 'Invite link copied to clipboard' : 'Game link copied to clipboard')
+      return
+    }
+    setShareHint(isInvite ? `Invite link: ${shareUrl}` : `Copy manually: ${shareUrl}`)
+  }, [copyText, resolveShareUrl])
+
+  const handleFarcasterShare = useCallback(() => {
+    const { url: shareUrl, isInvite } = resolveShareUrl()
+    const shareLine = isInvite
+      ? `♟️ Challenge me on ${APP_NAME}!`
+      : `♟️ Playing ${APP_NAME} on Base — take your shot!`
+    const composeUrl = new URL('https://warpcast.com/~/compose')
+    composeUrl.searchParams.set('text', `${shareLine}\n${shareUrl}`)
+    if (typeof window !== 'undefined') {
+      window.open(composeUrl.toString(), '_blank', 'noopener,noreferrer')
+      setShareHint('Opening Farcaster compose…')
+    } else {
+      setShareHint(`Farcaster share: ${composeUrl.toString()}`)
+    }
+  }, [resolveShareUrl])
 
   useEffect(() => {
     if (matchStatus !== 'inviting') {
@@ -671,7 +733,10 @@ function App() {
 
   const userDisplayName =
     context?.user?.displayName ?? context?.user?.username ?? 'You'
-  const opponentDisplayName = opponentType === 'human' ? 'Opponent' : 'Base Bot'
+  const opponentDisplayName =
+    opponentType === 'human'
+      ? opponentLabel ?? 'Opponent'
+      : 'Base Bot'
   const moveRows = useMemo(() => {
     const rows: Array<{ move: number; white?: string; black?: string }> = []
     for (let i = 0; i < history.length; i += 2) {
@@ -865,6 +930,20 @@ function App() {
             ? `Ready players waiting: ${availableMatches}. Jump in and claim white or black.`
             : 'Share an invite or queue up to find a live opponent.'}
         </p>
+        <div className="lobby-card__list" aria-live="polite">
+          {availablePlayerLabels.length > 0 ? (
+            <>
+              <span className="lobby-card__list-title">Active players</span>
+              <ul>
+                {availablePlayerLabels.map((label, index) => (
+                  <li key={`${label}-${index}`}>{label}</li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <span className="lobby-card__list-empty">No live players in queue yet.</span>
+          )}
+        </div>
       </div>
     </section>
   )
@@ -922,13 +1001,32 @@ function App() {
             {matchStatus === 'inviting' && inviteLink ? (
               <div className="board-card__invite">
                 <code>{inviteLink}</code>
-                <button
-                  type="button"
-                  onClick={handleShare}
-                  className="board-card__starter-button"
-                >
-                  Copy invite link
-                </button>
+                <div className="board-card__invite-actions">
+                  <button
+                    type="button"
+                    onClick={handleCopyInvite}
+                    className="board-card__starter-button"
+                  >
+                    Copy invite link
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleFarcasterShare}
+                    className="board-card__starter-button board-card__starter-button--ghost"
+                  >
+                    Share on Farcaster
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {matchStatus === 'searching' && availablePlayerLabels.length > 0 ? (
+              <div className="board-card__queue">
+                <span className="board-card__queue-title">Players ready right now</span>
+                <ul>
+                  {availablePlayerLabels.map((label, index) => (
+                    <li key={`${label}-${index}`}>{label}</li>
+                  ))}
+                </ul>
               </div>
             ) : null}
             <button type="button" onClick={handleCancelMatch} className="board-card__starter-cancel">
@@ -951,6 +1049,14 @@ function App() {
               disabled={shareButtonDisabled}
             >
               Share game
+            </button>
+            <button
+              type="button"
+              className="board-card__share board-card__share--secondary"
+              onClick={handleFarcasterShare}
+              disabled={shareButtonDisabled}
+            >
+              Share on Farcaster
             </button>
             <button type="button" onClick={undoMove} disabled={!history.length}>
               Undo move

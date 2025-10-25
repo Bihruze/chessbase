@@ -7,12 +7,14 @@ type MatchmakingMessage =
       type: 'match-join'
       matchId: string
       guestId: string
+      guestLabel?: string
     }
   | {
       type: 'match-confirm'
       matchId: string
       hostId: string
       guestId: string
+      hostLabel?: string
     }
   | {
       type: 'match-cancel'
@@ -33,6 +35,20 @@ type MatchmakingMessage =
 type QueueEntry = {
   id: string
   createdAt: number
+  label?: string
+}
+
+const DEFAULT_LABEL = 'Base player'
+
+const normaliseLabel = (value?: string | null) => {
+  const trimmed = value?.trim() ?? ''
+  if (!trimmed) {
+    return DEFAULT_LABEL
+  }
+  if (trimmed.length <= 42) {
+    return trimmed
+  }
+  return `${trimmed.slice(0, 39)}…`
 }
 
 export type MatchmakingState = {
@@ -41,6 +57,7 @@ export type MatchmakingState = {
   playerColor: 'white' | 'black'
   opponentType: 'human' | 'bot'
   opponentId: string | null
+  opponentLabel: string | null
   isHost: boolean
 }
 
@@ -52,10 +69,12 @@ export type MatchmakingResult = MatchmakingState & {
   createInvite: () => string
   joinInvite: (matchId: string) => void
   availableMatches: number
+  availablePlayerLabels: string[]
 }
 
 type UseMatchmakingOptions = {
   onOpponentMove: (san: string, fen: string) => void
+  playerLabel: string
 }
 
 const QUEUE_KEY = 'chessBase::matchQueue'
@@ -80,7 +99,11 @@ const readQueue = (): QueueEntry[] => {
     const raw = window.localStorage.getItem(QUEUE_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw) as QueueEntry[]
-    return pruneQueue(parsed)
+    const trimmed = pruneQueue(parsed)
+    if (trimmed.length !== parsed.length) {
+      window.localStorage.setItem(QUEUE_KEY, JSON.stringify(trimmed))
+    }
+    return trimmed
   } catch (error) {
     console.warn('match queue parse error', error)
     return []
@@ -99,9 +122,7 @@ const writeQueue = (entries: QueueEntry[]) => {
 }
 
 const clearQueueEntry = (id: string) => {
-  writeQueue(
-    readQueue().filter((entry) => entry.id !== id),
-  )
+  writeQueue(readQueue().filter((entry) => entry.id !== id))
 }
 
 const createInitialState = (): MatchmakingState => ({
@@ -110,13 +131,16 @@ const createInitialState = (): MatchmakingState => ({
   playerColor: 'white',
   opponentType: 'bot',
   opponentId: null,
+  opponentLabel: null,
   isHost: false,
 })
 
-export function useMatchmaking({ onOpponentMove }: UseMatchmakingOptions): MatchmakingResult {
+export function useMatchmaking({ onOpponentMove, playerLabel }: UseMatchmakingOptions): MatchmakingResult {
   const [state, setState] = useState<MatchmakingState>(() => createInitialState())
   const [availableMatches, setAvailableMatches] = useState(0)
+  const [availablePlayerLabels, setAvailablePlayerLabels] = useState<string[]>([])
   const selfIdRef = useRef<string>('')
+  const selfLabelRef = useRef<string>(normaliseLabel(playerLabel))
   const channelRef = useRef<BroadcastChannel | null>(null)
   const cleanupRef = useRef<() => void>(() => {})
   const stateRef = useRef(state)
@@ -125,14 +149,23 @@ export function useMatchmaking({ onOpponentMove }: UseMatchmakingOptions): Match
     stateRef.current = state
   }, [state])
 
+  useEffect(() => {
+    selfLabelRef.current = normaliseLabel(playerLabel)
+  }, [playerLabel])
+
   const syncAvailableMatches = useCallback(() => {
     if (typeof window === 'undefined') {
       setAvailableMatches(0)
+      setAvailablePlayerLabels([])
       return
     }
     const entries = readQueue()
     const selfId = selfIdRef.current
-    setAvailableMatches(entries.filter((entry) => entry.id !== selfId).length)
+    const others = entries.filter((entry) => entry.id !== selfId)
+    setAvailableMatches(others.length)
+    setAvailablePlayerLabels(
+      others.slice(0, 6).map((entry) => normaliseLabel(entry.label)),
+    )
   }, [])
 
   useEffect(() => {
@@ -183,12 +216,19 @@ export function useMatchmaking({ onOpponentMove }: UseMatchmakingOptions): Match
       playerColor: 'white',
       opponentType: 'bot',
       opponentId: 'base-bot',
+      opponentLabel: 'Base Bot',
       isHost: true,
     })
   }, [cancelMatchmaking])
 
   const setMatched = useCallback(
-    (params: { matchId: string; playerColor: 'white' | 'black'; opponentId: string; isHost: boolean }) => {
+    (params: {
+      matchId: string
+      playerColor: 'white' | 'black'
+      opponentId: string
+      opponentLabel?: string | null
+      isHost: boolean
+    }) => {
       if (params.isHost) {
         clearQueueEntry(selfIdRef.current)
         syncAvailableMatches()
@@ -199,6 +239,7 @@ export function useMatchmaking({ onOpponentMove }: UseMatchmakingOptions): Match
         playerColor: params.playerColor,
         opponentType: 'human',
         opponentId: params.opponentId,
+        opponentLabel: params.opponentLabel ? normaliseLabel(params.opponentLabel) : DEFAULT_LABEL,
         isHost: params.isHost,
       })
     },
@@ -232,6 +273,7 @@ export function useMatchmaking({ onOpponentMove }: UseMatchmakingOptions): Match
           matchId: message.matchId,
           playerColor: 'white',
           opponentId: message.guestId,
+          opponentLabel: message.guestLabel,
           isHost: true,
         })
         channel.postMessage({
@@ -239,6 +281,7 @@ export function useMatchmaking({ onOpponentMove }: UseMatchmakingOptions): Match
           matchId: message.matchId,
           hostId: selfId,
           guestId: message.guestId,
+          hostLabel: selfLabelRef.current,
         })
         return
       }
@@ -253,6 +296,7 @@ export function useMatchmaking({ onOpponentMove }: UseMatchmakingOptions): Match
           playerColor: 'black',
           opponentType: 'human',
           opponentId: message.hostId,
+          opponentLabel: normaliseLabel(message.hostLabel),
           isHost: false,
         })
         return
@@ -313,23 +357,26 @@ export function useMatchmaking({ onOpponentMove }: UseMatchmakingOptions): Match
         playerColor: 'black',
         opponentType: 'human',
         opponentId: hostEntry.id,
+        opponentLabel: normaliseLabel(hostEntry.label),
         isHost: false,
       })
       channelRef.current?.postMessage({
         type: 'match-join',
         matchId: hostEntry.id,
         guestId: selfId,
+        guestLabel: selfLabelRef.current,
       })
     } else {
       const createdAt = Date.now()
       const trimmed = queue.filter((entry) => entry.id !== selfId)
-      writeQueue([...trimmed, { id: selfId, createdAt }])
+      writeQueue([...trimmed, { id: selfId, createdAt, label: selfLabelRef.current }])
       setState({
         status: 'searching',
         matchId: selfId,
         playerColor: 'white',
         opponentType: 'human',
         opponentId: null,
+        opponentLabel: null,
         isHost: true,
       })
     }
@@ -347,6 +394,7 @@ export function useMatchmaking({ onOpponentMove }: UseMatchmakingOptions): Match
       playerColor: 'white',
       opponentType: 'human',
       opponentId: null,
+      opponentLabel: null,
       isHost: true,
     })
     return matchId
@@ -366,12 +414,14 @@ export function useMatchmaking({ onOpponentMove }: UseMatchmakingOptions): Match
         playerColor: 'black',
         opponentType: 'human',
         opponentId: null,
+        opponentLabel: null,
         isHost: false,
       })
       channelRef.current?.postMessage({
         type: 'match-join',
         matchId,
         guestId: selfIdRef.current,
+        guestLabel: selfLabelRef.current,
       })
     },
     [cancelMatchmaking],
@@ -398,6 +448,7 @@ export function useMatchmaking({ onOpponentMove }: UseMatchmakingOptions): Match
       playerColor: state.playerColor,
       opponentType: state.opponentType,
       opponentId: state.opponentId,
+      opponentLabel: state.opponentLabel,
       isHost: state.isHost,
       emitMove,
       startBotMatch,
@@ -406,9 +457,11 @@ export function useMatchmaking({ onOpponentMove }: UseMatchmakingOptions): Match
       createInvite,
       joinInvite,
       availableMatches,
+      availablePlayerLabels,
     }),
     [
       availableMatches,
+      availablePlayerLabels,
       cancelMatchmaking,
       emitMove,
       startBotMatch,
@@ -418,6 +471,7 @@ export function useMatchmaking({ onOpponentMove }: UseMatchmakingOptions): Match
       state.isHost,
       state.matchId,
       state.opponentId,
+      state.opponentLabel,
       state.opponentType,
       state.playerColor,
       state.status,
