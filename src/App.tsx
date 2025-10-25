@@ -1,4 +1,4 @@
-import { type CSSProperties, type ChangeEvent, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Chessboard } from 'react-chessboard'
 import type { PieceDropHandlerArgs, PieceHandlerArgs, SquareHandlerArgs } from 'react-chessboard'
 import { useMiniKit, useOpenUrl } from '@coinbase/onchainkit/minikit'
@@ -10,7 +10,6 @@ import type { CaptureEvent } from './hooks/useChessGame'
 import { Leaderboard } from './components/Leaderboard'
 import { useLeaderboard } from './hooks/useLeaderboard'
 import { useMatchmaking } from './hooks/useMatchmaking'
-import { useFriendList } from './hooks/useFriendList'
 import { APP_NAME, APP_URL, DEFAULT_CAPTURE_CONTRACT } from './config/constants'
 import { shortenHex } from './utils/strings'
 import { selectEngineMove } from './utils/chessAi'
@@ -138,8 +137,6 @@ function App() {
   const boardControlsRef = useRef<HTMLDivElement | null>(null)
   const autoJoinInviteRef = useRef(false)
   const playerProfileName = context?.user?.displayName ?? context?.user?.username ?? 'Base player'
-  const { friends, addFriend, removeFriend } = useFriendList()
-  const [friendInput, setFriendInput] = useState('')
 
   const handleOpponentMove = useCallback(
     (san: string, fen: string) => {
@@ -382,45 +379,16 @@ function App() {
     setShareHint(isInvite ? `Invite link: ${shareUrl}` : `Copy manually: ${shareUrl}`)
   }, [copyText, resolveShareUrl])
 
-  const handleFarcasterShare = useCallback((friendHandle?: string) => {
+  const handleFarcasterShare = useCallback(() => {
     const { url: shareUrl, isInvite } = resolveShareUrl()
     const shareLine = isInvite
       ? `♟️ Challenge me on ${APP_NAME}!`
       : `♟️ Playing ${APP_NAME} on Base — take your shot!`
-    const mention = friendHandle ? (friendHandle.startsWith('@') ? friendHandle : `@${friendHandle}`) : null
     const composeUrl = new URL('https://warpcast.com/~/compose')
-    const text = mention ? `${shareLine}\n${mention}\n${shareUrl}` : `${shareLine}\n${shareUrl}`
-    composeUrl.searchParams.set('text', text)
+    composeUrl.searchParams.set('text', `${shareLine}\n${shareUrl}`)
     openUrl(composeUrl.toString())
-    setShareHint(mention ? `Sharing invite with ${mention}` : 'Opening Farcaster compose…')
+    setShareHint('Opening Farcaster compose…')
   }, [openUrl, resolveShareUrl])
-
-  const handleAddFriend = useCallback(
-    (event?: FormEvent<HTMLFormElement>) => {
-      event?.preventDefault()
-      if (!friendInput.trim()) {
-        setShareHint('Enter a Farcaster handle to save.')
-        return
-      }
-      const result = addFriend(friendInput)
-      if (!result.success) {
-        setShareHint(result.message ?? 'Could not save friend.')
-        return
-      }
-      setFriendInput('')
-      setShareHint('Friend saved for quick invites.')
-    },
-    [addFriend, friendInput],
-  )
-
-  const handleRemoveFriend = useCallback((handle: string) => {
-    removeFriend(handle)
-    setShareHint(`Removed @${handle}`)
-  }, [removeFriend])
-
-  const handleFriendInputChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setFriendInput(event.target.value)
-  }, [])
 
   useEffect(() => {
     if (matchStatus !== 'inviting') {
@@ -761,29 +729,14 @@ function App() {
   }, [history.length])
 
   const safeArea = context?.client?.safeAreaInsets
-  const safeTop = safeArea?.top ?? 0
-  const safeBottom = safeArea?.bottom ?? 0
-  const safeLeft = safeArea?.left ?? 0
-  const safeRight = safeArea?.right ?? 0
-
-  const appPaddingStyle = useMemo(
-    () => ({
-      paddingBottom: `calc(${safeBottom}px + 24px)`,
-      paddingLeft: `calc(${safeLeft}px + 16px)`,
-      paddingRight: `calc(${safeRight}px + 16px)`,
-    }),
-    [safeBottom, safeLeft, safeRight],
-  )
-
-  const contentPaddingTop = useMemo(
-    () => `calc(${safeTop}px + 190px)`,
-    [safeTop],
-  )
-
-  const leaderboardPaddingTop = useMemo(
-    () => `calc(${safeTop}px + 16px)`,
-    [safeTop],
-  )
+  const containerStyle = useMemo(() => {
+    return {
+      paddingTop: `calc(${safeArea?.top ?? 0}px + 16px)`,
+      paddingBottom: `calc(${safeArea?.bottom ?? 0}px + 24px)`,
+      paddingLeft: `calc(${safeArea?.left ?? 0}px + 16px)`,
+      paddingRight: `calc(${safeArea?.right ?? 0}px + 16px)`,
+    }
+  }, [safeArea])
 
   const waitingColorLabel = turn === 'w' ? 'Black' : 'White'
   const opponentColorLabel = playerColor === 'white' ? 'Black' : 'White'
@@ -985,10 +938,7 @@ function App() {
   const shareButtonDisabled = matchStatus === 'searching' || matchStatus === 'joining'
 
   const lobbyPanel = (
-    <section
-      className="board-card lobby-card w-full max-w-3xl rounded-3xl border border-purple-500/40 bg-white/5 p-6 text-white shadow-[0_20px_60px_rgba(76,29,149,0.45)] backdrop-blur"
-      aria-label="Match setup"
-    >
+    <section className="board-card lobby-card" aria-label="Match setup">
       <div className="lobby-card__content">
         <span className="lobby-card__eyebrow">Choose a mode</span>
         <h2>Invite friends or battle Base players.</h2>
@@ -1038,72 +988,12 @@ function App() {
             <span className="lobby-card__list-empty">No live players in queue yet.</span>
           )}
         </div>
-        <div
-          className="mt-4 flex w-full max-w-sm flex-col gap-3 rounded-2xl border border-purple-500/40 bg-white/5 p-4 shadow-[0_16px_40px_rgba(76,29,149,0.28)] backdrop-blur"
-          aria-label="Saved Farcaster friends"
-        >
-          <span className="text-xs font-semibold uppercase tracking-[0.3em] text-purple-200/80">
-            Farcaster friends
-          </span>
-          <form className="flex w-full gap-2" onSubmit={handleAddFriend}>
-            <input
-              className="h-11 flex-1 rounded-xl border border-purple-500/40 bg-white/10 px-3 text-sm text-white placeholder:text-purple-200/50 focus:border-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-400/60"
-              value={friendInput}
-              onChange={handleFriendInputChange}
-              placeholder="@friend"
-              aria-label="Add Farcaster friend"
-              autoComplete="off"
-            />
-            <button
-              type="submit"
-              className="h-11 rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 px-4 text-sm font-semibold text-white shadow-[0_10px_28px_rgba(110,37,184,0.45)] transition hover:shadow-[0_14px_32px_rgba(110,37,184,0.55)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300"
-            >
-              Save
-            </button>
-          </form>
-          {friends.length > 0 ? (
-            <ul className="flex flex-col gap-2">
-              {friends.map((handle) => (
-                <li
-                  key={handle}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-purple-500/30 bg-white/10 px-3 py-2 text-sm text-purple-100"
-                >
-                  <span className="font-medium text-white">@{handle}</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleFarcasterShare(handle)}
-                      className="rounded-lg bg-gradient-to-r from-purple-500 to-fuchsia-500 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-white shadow-md transition hover:shadow-lg"
-                    >
-                      Invite
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveFriend(handle)}
-                      className="rounded-lg border border-rose-400/60 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-rose-200 transition hover:bg-rose-500/20"
-                      aria-label={`Remove ${handle}`}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <span className="text-xs text-purple-100/80">
-              Add handles for one-tap Farcaster invites.
-            </span>
-          )}
-        </div>
       </div>
     </section>
   )
 
   const boardPanel = (
-    <section
-      className="board-card board-card--full w-full max-w-3xl rounded-3xl border border-purple-500/40 bg-white/5 p-6 text-white shadow-[0_20px_60px_rgba(76,29,149,0.45)] backdrop-blur"
-      aria-label="Chess board"
-    >
+    <section className="board-card board-card--full" aria-label="Chess board">
       <div className="player-strip" ref={topPlayerStripRef}>
         <div>
           <span className="player-strip__label">{opponentColorLabel}</span>
@@ -1119,20 +1009,12 @@ function App() {
       </div>
 
       {opponentType === 'bot' && (
-        <div
-          className="bot-difficulty mt-4 flex w-full max-w-xs items-center justify-center gap-3"
-          role="group"
-          aria-label="Bot difficulty"
-        >
+        <div className="bot-difficulty" role="group" aria-label="Bot difficulty">
           {(['easy', 'medium', 'hard'] as const).map((level) => (
             <button
               key={level}
               type="button"
-              className={`flex-1 rounded-xl border border-purple-500/40 px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition ${
-                botDifficulty === level
-                  ? 'bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white shadow-[0_10px_28px_rgba(110,37,184,0.45)]'
-                  : 'bg-white/10 text-purple-100/80 hover:bg-white/20'
-              }`}
+              className={`bot-difficulty__option${botDifficulty === level ? ' bot-difficulty__option--active' : ''}`}
               onClick={() => setBotDifficulty(level)}
               aria-pressed={botDifficulty === level}
             >
@@ -1143,9 +1025,7 @@ function App() {
       )}
 
       <div
-        className={`board-card__board ${
-          canPlay ? '' : 'board-card__board--locked'
-        } relative mx-auto flex aspect-square !w-4/5 max-w-[420px] items-center justify-center rounded-[28px] border border-purple-500/40 bg-gradient-to-br from-purple-600/20 to-fuchsia-600/20 shadow-[0_24px_60px_rgba(76,29,149,0.4)] backdrop-blur md:!w-full md:max-w-none`}
+        className={`board-card__board${canPlay ? '' : ' board-card__board--locked'}`}
         ref={boardContainerRef}
       >
         <Chessboard options={chessboardOptions} />
@@ -1165,59 +1045,30 @@ function App() {
             {matchStatus === 'inviting' && inviteLink ? (
               <div className="board-card__invite">
                 <code>{inviteLink}</code>
-                <div className="board-card__invite-actions flex flex-col gap-2 md:flex-row">
+                <div className="board-card__invite-actions">
                   <button
                     type="button"
                     onClick={handleCopyInvite}
-                    className="board-card__starter-button h-11"
+                    className="board-card__starter-button"
                   >
                     Copy invite link
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleFarcasterShare()}
-                    className="board-card__starter-button board-card__starter-button--ghost h-11"
+                    onClick={handleFarcasterShare}
+                    className="board-card__starter-button board-card__starter-button--ghost"
                   >
                     Share on Farcaster
                   </button>
                 </div>
               </div>
             ) : null}
-            {friends.length > 0 ? (
-              <div className="mt-3 flex w-full max-w-xs flex-col gap-2 rounded-2xl border border-purple-500/30 bg-white/5 p-3 shadow-[0_16px_40px_rgba(76,29,149,0.28)]">
-                <span className="board-card__queue-title text-xs uppercase tracking-[0.2em] text-purple-200/80">
-                  Share directly with
-                </span>
-                <ul className="flex flex-col gap-2">
-                  {friends.map((handle) => (
-                    <li
-                      key={`invite-friend-${handle}`}
-                      className="flex items-center justify-between gap-2 rounded-xl border border-purple-500/30 bg-white/10 px-3 py-2 text-xs text-purple-100"
-                    >
-                      <span className="font-medium text-white">@{handle}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleFarcasterShare(handle)}
-                        className="rounded-lg bg-gradient-to-r from-purple-500 to-fuchsia-500 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-wider text-white shadow-md"
-                      >
-                        Share invite
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
             {matchStatus === 'searching' && availablePlayerLabels.length > 0 ? (
-              <div className="board-card__queue mt-3 flex w-full max-w-xs flex-col gap-2 rounded-2xl border border-purple-500/30 bg-white/5 p-3 shadow-[0_16px_40px_rgba(76,29,149,0.28)]">
+              <div className="board-card__queue">
                 <span className="board-card__queue-title">Players ready right now</span>
-                <ul className="flex flex-col gap-2 text-xs text-purple-100">
+                <ul>
                   {availablePlayerLabels.map((label, index) => (
-                    <li
-                      key={`${label}-${index}`}
-                      className="rounded-lg border border-purple-500/20 bg-white/10 px-3 py-2"
-                    >
-                      {label}
-                    </li>
+                    <li key={`${label}-${index}`}>{label}</li>
                   ))}
                 </ul>
               </div>
@@ -1229,24 +1080,15 @@ function App() {
         ) : null}
       </div>
 
-      <div
-        className="board-card__controls grid w-full max-w-md grid-cols-2 gap-3"
-        role="group"
-        aria-label="Board actions"
-        ref={boardControlsRef}
-      >
-        <button
-          type="button"
-          onClick={handleNewGame}
-          className="h-12 rounded-2xl bg-gradient-to-r from-purple-500 to-fuchsia-500 text-sm font-semibold uppercase tracking-[0.2em] text-white shadow-[0_16px_36px_rgba(110,37,184,0.5)] transition hover:shadow-[0_20px_44px_rgba(110,37,184,0.6)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300"
-        >
+      <div className="board-card__controls" role="group" aria-label="Board actions" ref={boardControlsRef}>
+        <button type="button" onClick={handleNewGame}>
           New game
         </button>
         {hasSessionStarted ? (
           <>
             <button
               type="button"
-              className="board-card__share h-12 rounded-2xl bg-gradient-to-r from-purple-500 to-fuchsia-500 text-sm font-semibold uppercase tracking-[0.2em] text-white shadow-[0_16px_36px_rgba(110,37,184,0.5)] transition hover:shadow-[0_20px_44px_rgba(110,37,184,0.6)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300"
+              className="board-card__share"
               onClick={handleShare}
               disabled={shareButtonDisabled}
             >
@@ -1254,25 +1096,16 @@ function App() {
             </button>
             <button
               type="button"
-              className="board-card__share board-card__share--secondary h-12 rounded-2xl border border-purple-500/40 bg-white/10 text-sm font-semibold uppercase tracking-[0.2em] text-purple-100 hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300"
-              onClick={() => handleFarcasterShare()}
+              className="board-card__share board-card__share--secondary"
+              onClick={handleFarcasterShare}
               disabled={shareButtonDisabled}
             >
               Share on Farcaster
             </button>
-            <button
-              type="button"
-              onClick={undoMove}
-              className="h-12 rounded-2xl border border-purple-500/40 bg-white/10 text-sm font-semibold uppercase tracking-[0.2em] text-purple-100 transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300 disabled:cursor-not-allowed disabled:opacity-40"
-              disabled={!history.length}
-            >
+            <button type="button" onClick={undoMove} disabled={!history.length}>
               Undo move
             </button>
-            <button
-              type="button"
-              onClick={toggleOrientation}
-              className="col-span-2 h-12 rounded-2xl border border-purple-500/40 bg-white/10 text-sm font-semibold uppercase tracking-[0.2em] text-purple-100 transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300"
-            >
+            <button type="button" onClick={toggleOrientation}>
               Flip board
             </button>
           </>
@@ -1380,30 +1213,9 @@ function App() {
   )
 
   const leaderboardPanel = (
-    <section
-      aria-label="Leaderboard"
-      className="fixed inset-x-0 top-0 z-40 border-b border-purple-500/30 bg-gradient-to-b from-[#1f0b36]/95 via-[#17092e]/90 to-transparent backdrop-blur"
-      style={{ paddingTop: leaderboardPaddingTop }}
-    >
-      <div className="mx-auto w-full max-w-md px-4 pb-4">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-purple-200/80">
-          Current standings
-        </h2>
-        <div className="mt-3 rounded-2xl border border-purple-500/40 bg-white/5 p-3 shadow-[0_12px_32px_rgba(76,29,149,0.35)]">
-          <Leaderboard entries={leaderboard} variant="embedded" />
-        </div>
-      </div>
-    </section>
-  )
-
-  const leaderboardContentPanel = (
-    <section className="mt-2 w-full max-w-md rounded-2xl border border-purple-500/40 bg-white/5 p-4 text-white shadow-[0_16px_40px_rgba(76,29,149,0.35)]">
-      <h2 className="text-sm font-semibold uppercase tracking-[0.28em] text-purple-200/80">
-        Current standings
-      </h2>
-      <div className="mt-3">
-        <Leaderboard entries={leaderboard} variant="embedded" />
-      </div>
+    <section className="leaderboard-panel" aria-label="Leaderboard">
+      <h2>Current standings</h2>
+      <Leaderboard entries={leaderboard} variant="embedded" />
     </section>
   )
 
@@ -1423,16 +1235,8 @@ function App() {
   ]
 
   return (
-    <div
-      className="app relative min-h-screen bg-gradient-to-b from-[#100322] via-[#14042c] to-[#080213] text-white"
-      style={appPaddingStyle}
-    >
-      {leaderboardPanel}
-      <div
-        className="app__container mx-auto flex w-full max-w-3xl flex-col items-center gap-6 px-4 pb-20"
-        ref={containerRef}
-        style={{ paddingTop: contentPaddingTop }}
-      >
+    <div className="app" style={containerStyle}>
+      <div className="app__container" ref={containerRef}>
         <header className="app__header" ref={headerRef}>
           <div className="app__title">
             <span className="app__logo" aria-hidden="true">♞</span>
@@ -1444,25 +1248,17 @@ function App() {
         </header>
 
         {hasSessionStarted ? (
-          <nav
-            className="app__nav mt-2 flex w-full max-w-md items-center justify-center gap-2 rounded-full border border-purple-500/30 bg-white/5 px-2 py-2 text-sm font-medium uppercase tracking-[0.18em] backdrop-blur"
-            aria-label="App sections"
-            ref={navRef}
-          >
+          <nav className="app__nav" aria-label="App sections" ref={navRef}>
             {navItems.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                className={`flex flex-1 items-center justify-center gap-2 rounded-full px-3 py-2 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-400 ${activeView === item.id ? 'bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white shadow-[0_8px_24px_rgba(110,37,184,0.4)]' : 'text-purple-100/60 hover:text-white hover:bg-white/10'}`}
+                className={`app__nav-button${activeView === item.id ? ' app__nav-button--active' : ''}`}
                 onClick={() => setActiveView(item.id)}
                 aria-current={activeView === item.id ? 'page' : undefined}
               >
-                <span className="text-[0.72rem] uppercase tracking-[0.2em]">{item.label}</span>
-                {item.badge ? (
-                  <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-white/20 px-2 py-[2px] text-[0.62rem]">
-                    {item.badge}
-                  </span>
-                ) : null}
+                <span className="app__nav-label">{item.label}</span>
+                {item.badge ? <span className="app__nav-badge">{item.badge}</span> : null}
               </button>
             ))}
           </nav>
@@ -1472,7 +1268,7 @@ function App() {
         {activeView === 'board' ? boardPanel : null}
         {activeView === 'moves' ? movesPanel : null}
         {activeView === 'captures' ? capturesPanel : null}
-        {activeView === 'leaderboard' ? leaderboardContentPanel : null}
+        {activeView === 'leaderboard' ? leaderboardPanel : null}
       </div>
       {pendingCapture && address && (
         <CaptureTransactionPanel
