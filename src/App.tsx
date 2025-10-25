@@ -892,21 +892,6 @@ function App() {
           className={`board-card__board${canPlay ? '' : ' board-card__board--locked'}`}
           ref={boardContainerRef}
         >
-          {opponentType === 'bot' ? (
-            <div className="bot-difficulty bot-difficulty--overlay" role="group" aria-label="Bot difficulty">
-              {(['easy', 'medium', 'hard'] as const).map((level) => (
-                <button
-                  key={level}
-                  type="button"
-                  className={`bot-difficulty__option${botDifficulty === level ? ' bot-difficulty__option--active' : ''}`}
-                  onClick={() => setBotDifficulty(level)}
-                  aria-pressed={botDifficulty === level}
-                >
-                  {level.charAt(0).toUpperCase() + level.slice(1)}
-                </button>
-              ))}
-            </div>
-          ) : null}
           <Chessboard options={chessboardOptions} />
           {isAwaitingMatch ? (
             <div className="board-card__starter" role="status">
@@ -954,6 +939,22 @@ function App() {
           </div>
         </div>
       </div>
+
+      {opponentType === 'bot' ? (
+        <div className="bot-difficulty" role="group" aria-label="Bot difficulty">
+          {(['easy', 'medium', 'hard'] as const).map((level) => (
+            <button
+              key={level}
+              type="button"
+              className={`bot-difficulty__option${botDifficulty === level ? ' bot-difficulty__option--active' : ''}`}
+              onClick={() => setBotDifficulty(level)}
+              aria-pressed={botDifficulty === level}
+            >
+              {level.charAt(0).toUpperCase() + level.slice(1)}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="board-card__controls" role="group" aria-label="Board actions" ref={boardControlsRef}>
         <button type="button" onClick={handleNewGame}>
