@@ -533,6 +533,13 @@ body {
   font-weight: 600;
 }
 
+.player-strip__info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
 .player-strip__captures {
   display: flex;
   gap: 8px;
@@ -717,19 +724,6 @@ body {
   color: #eef2ff;
 }
 
-.bot-difficulty--overlay {
-  position: absolute;
-  top: 50%;
-  left: clamp(18px, 5vw, 64px);
-  transform: translateY(-50%);
-  flex-direction: column;
-  gap: 8px;
-  z-index: 6;
-  align-items: stretch;
-  margin: 0;
-  justify-content: center;
-}
-
 .board-card__controls {
   display: flex;
   flex-wrap: wrap;
@@ -812,13 +806,6 @@ body {
     min-width: 0;
   }
 
-  .bot-difficulty--overlay {
-    top: auto;
-    bottom: clamp(96px, 20vh, 140px);
-    left: 50%;
-    transform: translate(-50%, 0);
-    flex-direction: row;
-  }
 }
 
 @media (max-width: 360px) {
@@ -828,11 +815,6 @@ body {
 
   .board-card__controls button {
     flex: 1 1 100%;
-  }
-
-  .bot-difficulty--overlay {
-    gap: 6px;
-    bottom: clamp(88px, 24vh, 132px);
   }
 }
 
@@ -1284,6 +1266,13 @@ body {
   justify-content: center;
   gap: 10px;
   margin: 6px 0 4px;
+}
+
+.bot-difficulty--inline {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
 }
 
 .bot-difficulty__option {

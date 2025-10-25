@@ -545,6 +545,24 @@ function App() {
   ])
 
   useEffect(() => {
+    const node = boardContainerRef.current
+    if (!node) {
+      return
+    }
+
+    const preventScroll = (event: TouchEvent) => {
+      if (event.touches.length === 1) {
+        event.preventDefault()
+      }
+    }
+
+    node.addEventListener('touchmove', preventScroll, { passive: false })
+    return () => {
+      node.removeEventListener('touchmove', preventScroll)
+    }
+  }, [isBoardView])
+
+  useEffect(() => {
     if (!hasSessionStarted && history.length > 0) {
       setHasSessionStarted(true)
     }
@@ -857,9 +875,24 @@ function App() {
     <section className="board-card board-card--full" aria-label="Chess board">
       <div className="board-card__stage">
         <div className="player-strip player-strip--overlay player-strip--top" ref={topPlayerStripRef}>
-          <div>
+          <div className="player-strip__info">
             <span className="player-strip__label">{opponentColorLabel}</span>
             <h2 className="player-strip__name">{opponentDisplayName}</h2>
+            {opponentType === 'bot' ? (
+              <div className="bot-difficulty bot-difficulty--inline" role="group" aria-label="Bot difficulty">
+                {(['easy', 'medium', 'hard'] as const).map((level) => (
+                  <button
+                    key={level}
+                    type="button"
+                    className={`bot-difficulty__option${botDifficulty === level ? ' bot-difficulty__option--active' : ''}`}
+                    onClick={() => setBotDifficulty(level)}
+                    aria-pressed={botDifficulty === level}
+                  >
+                    {level.charAt(0).toUpperCase() + level.slice(1)}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div className="player-strip__captures" aria-label="Pieces captured by opponent">
             {captureSummary.opponentIcons.length ? (
@@ -920,22 +953,6 @@ function App() {
             )}
           </div>
         </div>
-
-        {opponentType === 'bot' && (
-          <div className="bot-difficulty bot-difficulty--overlay" role="group" aria-label="Bot difficulty">
-            {(['easy', 'medium', 'hard'] as const).map((level) => (
-              <button
-                key={level}
-                type="button"
-                className={`bot-difficulty__option${botDifficulty === level ? ' bot-difficulty__option--active' : ''}`}
-                onClick={() => setBotDifficulty(level)}
-                aria-pressed={botDifficulty === level}
-              >
-                {level.charAt(0).toUpperCase() + level.slice(1)}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       <div className="board-card__controls" role="group" aria-label="Board actions" ref={boardControlsRef}>
