@@ -1,4 +1,4 @@
-import { type CSSProperties, type ChangeEvent, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Chessboard } from 'react-chessboard'
 import type { PieceDropHandlerArgs, PieceHandlerArgs, SquareHandlerArgs } from 'react-chessboard'
 import { useMiniKit, useOpenUrl } from '@coinbase/onchainkit/minikit'
@@ -10,8 +10,7 @@ import type { CaptureEvent } from './hooks/useChessGame'
 import { Leaderboard } from './components/Leaderboard'
 import { useLeaderboard } from './hooks/useLeaderboard'
 import { useMatchmaking } from './hooks/useMatchmaking'
-import { useFriendList } from './hooks/useFriendList'
-import { APP_NAME, APP_URL, DEFAULT_CAPTURE_CONTRACT } from './config/constants'
+import { APP_NAME, DEFAULT_CAPTURE_CONTRACT, FARCASTER_MINIAPP_URI } from './config/constants'
 import { shortenHex } from './utils/strings'
 import { selectEngineMove } from './utils/chessAi'
 import { env } from './config/env'
@@ -67,6 +66,12 @@ type CaptureLogEntry = {
   piece: string
   txHash: string
   timestamp: number
+}
+
+type FarcasterFriend = {
+  fid: number
+  username: string
+  displayName?: string
 }
 
 const EXPLORERS: Record<number, string> = {
@@ -138,8 +143,17 @@ function App() {
   const boardControlsRef = useRef<HTMLDivElement | null>(null)
   const autoJoinInviteRef = useRef(false)
   const playerProfileName = context?.user?.displayName ?? context?.user?.username ?? 'Base player'
-  const { friends, addFriend, removeFriend } = useFriendList()
-  const [friendInput, setFriendInput] = useState('')
+  const miniAppUri = FARCASTER_MINIAPP_URI
+  const farcasterApiBase = useMemo(
+    () => (env.farcasterApiUrl ?? 'https://api.warpcast.com').replace(/\/$/, ''),
+    [env.farcasterApiUrl],
+  )
+  const farcasterApiToken = env.farcasterApiToken ?? null
+  const [farcasterFriends, setFarcasterFriends] = useState<FarcasterFriend[]>([])
+  const [isFetchingFriends, setIsFetchingFriends] = useState(false)
+  const [friendFetchError, setFriendFetchError] = useState<string | null>(null)
+  const [isFriendPickerOpen, setIsFriendPickerOpen] = useState(false)
+  const [selectedFriendIds, setSelectedFriendIds] = useState<Set<number>>(new Set())
 
   const handleOpponentMove = useCallback(
     (san: string, fen: string) => {
@@ -167,20 +181,13 @@ function App() {
     availablePlayerLabels,
   } = useMatchmaking({ onOpponentMove: handleOpponentMove, playerLabel: playerProfileName })
   const botTurnColor = playerColor === 'white' ? 'b' : 'w'
-  const baseShareUrl = useMemo(() => {
-    const envUrl = APP_URL && APP_URL !== 'https://example.com' ? APP_URL.trim() : null
-    if (envUrl && envUrl.length > 0) {
-      return envUrl.replace(/\/$/, '')
-    }
-    if (typeof window === 'undefined' || !window.location) {
-      return 'https://example.com'
-    }
-    const { origin, pathname } = window.location
-    return `${origin}${pathname}`
-  }, [])
+  const baseShareUrl = useMemo(() => miniAppUri, [miniAppUri])
   const buildInviteLink = useCallback(
-    (id: string) => `${baseShareUrl}?invite=${id}`,
-    [baseShareUrl],
+    (id: string) => {
+      const separator = miniAppUri.includes('?') ? '&' : '?'
+      return `${miniAppUri}${separator}invite=${id}`
+    },
+    [miniAppUri],
   )
   const openUrl = useOpenUrl({
     fallback: (url: string) => {
@@ -382,44 +389,143 @@ function App() {
     setShareHint(isInvite ? `Invite link: ${shareUrl}` : `Copy manually: ${shareUrl}`)
   }, [copyText, resolveShareUrl])
 
-  const handleFarcasterShare = useCallback((friendHandle?: string) => {
-    const { url: shareUrl, isInvite } = resolveShareUrl()
-    const shareLine = isInvite
-      ? `♟️ Challenge me on ${APP_NAME}!`
-      : `♟️ Playing ${APP_NAME} on Base — take your shot!`
-    const mention = friendHandle ? (friendHandle.startsWith('@') ? friendHandle : `@${friendHandle}`) : null
-    const composeUrl = new URL('https://warpcast.com/~/compose')
-    const text = mention ? `${shareLine}\n${mention}\n${shareUrl}` : `${shareLine}\n${shareUrl}`
-    composeUrl.searchParams.set('text', text)
-    openUrl(composeUrl.toString())
-    setShareHint(mention ? `Sharing invite with ${mention}` : 'Opening Farcaster compose…')
-  }, [openUrl, resolveShareUrl])
-
-  const handleAddFriend = useCallback(
-    (event?: FormEvent<HTMLFormElement>) => {
-      event?.preventDefault()
-      if (!friendInput.trim()) {
-        setShareHint('Enter a Farcaster handle to save.')
-        return
+  const handleFarcasterShare = useCallback(
+    (friendHandles?: string | string[]) => {
+      const { url: shareUrl, isInvite } = resolveShareUrl()
+      const shareLine = isInvite
+        ? `♟️ Challenge me on ${APP_NAME}!`
+        : `♟️ Playing ${APP_NAME} on Base — take your shot!`
+      const handlesArray = Array.isArray(friendHandles)
+        ? friendHandles
+        : friendHandles
+          ? [friendHandles]
+          : []
+      const mentionLine = handlesArray.length
+        ? handlesArray
+            .map((handle) => (handle.startsWith('@') ? handle : `@${handle}`))
+            .join(' ')
+        : null
+      const composeUrl = new URL('https://warpcast.com/~/compose')
+      const textParts = [shareLine]
+      if (mentionLine) {
+        textParts.push(mentionLine)
       }
-      const result = addFriend(friendInput)
-      if (!result.success) {
-        setShareHint(result.message ?? 'Could not save friend.')
-        return
-      }
-      setFriendInput('')
-      setShareHint('Friend saved for quick invites.')
+      textParts.push(shareUrl)
+      composeUrl.searchParams.set('text', textParts.join('\n'))
+      openUrl(composeUrl.toString())
+      setShareHint(
+        mentionLine ? `Sharing invite with ${mentionLine}` : 'Opening Farcaster compose…',
+      )
     },
-    [addFriend, friendInput],
+    [openUrl, resolveShareUrl],
   )
 
-  const handleRemoveFriend = useCallback((handle: string) => {
-    removeFriend(handle)
-    setShareHint(`Removed @${handle}`)
-  }, [removeFriend])
+  const loadFarcasterFriends = useCallback(async () => {
+    const fid = context?.user?.fid
+    if (!fid) {
+      return
+    }
+    if (!farcasterApiToken) {
+      setFriendFetchError('Configure VITE_FARCASTER_API_TOKEN to load friends.')
+      setFarcasterFriends([])
+      return
+    }
+    setIsFetchingFriends(true)
+    setFriendFetchError(null)
+    try {
+      const response = await fetch(
+        `${farcasterApiBase}/v2/user-following?fid=${fid}&limit=50`,
+        {
+          headers: {
+            Authorization: `Bearer ${farcasterApiToken}`,
+          },
+        },
+      )
+      if (!response.ok) {
+        throw new Error(`Request failed: ${response.status}`)
+      }
+      const payload = (await response.json()) as Record<string, unknown>
+      const result = (payload['result'] as Record<string, unknown> | undefined) ?? {}
+      const rawUsers =
+        (result['users'] as Array<Record<string, unknown>> | undefined) ??
+        (result['following'] as Array<Record<string, unknown>> | undefined) ??
+        (payload['users'] as Array<Record<string, unknown>> | undefined) ??
+        []
+      const mapped: FarcasterFriend[] = []
+      ;(rawUsers as Array<Record<string, unknown>>).forEach((item) => {
+        const container = item as Record<string, unknown>
+        const user = (container['user'] as Record<string, unknown> | undefined) ?? container
+        const fidValue =
+          typeof user?.['fid'] === 'number' ? (user['fid'] as number) : undefined
+        const usernameValue =
+          typeof user?.['username'] === 'string' ? (user['username'] as string) : undefined
+        if (!fidValue || !usernameValue) {
+          return
+        }
+        const displayName =
+          typeof user?.['displayName'] === 'string'
+            ? (user['displayName'] as string)
+            : typeof user?.['fullName'] === 'string'
+              ? (user['fullName'] as string)
+              : undefined
+        mapped.push({ fid: fidValue, username: usernameValue, displayName })
+      })
+      setFarcasterFriends(mapped)
+    } catch (error) {
+      console.error('farcaster friends fetch failed', error)
+      setFriendFetchError('Unable to load Farcaster friends right now.')
+    } finally {
+      setIsFetchingFriends(false)
+    }
+  }, [context?.user?.fid, farcasterApiBase, farcasterApiToken])
 
-  const handleFriendInputChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setFriendInput(event.target.value)
+  useEffect(() => {
+    if (!context?.user?.fid) {
+      return
+    }
+    loadFarcasterFriends()
+  }, [context?.user?.fid, loadFarcasterFriends])
+
+  const toggleFriendSelection = useCallback((fid: number) => {
+    setSelectedFriendIds((current) => {
+      const next = new Set(current)
+      if (next.has(fid)) {
+        next.delete(fid)
+      } else {
+        next.add(fid)
+      }
+      return next
+    })
+  }, [])
+
+  const selectedFriendUsernames = useMemo(
+    () =>
+      farcasterFriends
+        .filter((friend) => selectedFriendIds.has(friend.fid))
+        .map((friend) => friend.username),
+    [farcasterFriends, selectedFriendIds],
+  )
+
+  const handleSendFriendInvites = useCallback(() => {
+    if (selectedFriendUsernames.length === 0) {
+      setShareHint('Select at least one friend to invite.')
+      return
+    }
+    handleFarcasterShare(selectedFriendUsernames)
+    setIsFriendPickerOpen(false)
+    setSelectedFriendIds(new Set())
+  }, [handleFarcasterShare, selectedFriendUsernames])
+
+  const openFriendPicker = useCallback(() => {
+    if (!farcasterFriends.length && !isFetchingFriends) {
+      void loadFarcasterFriends()
+    }
+    setIsFriendPickerOpen(true)
+  }, [farcasterFriends.length, isFetchingFriends, loadFarcasterFriends])
+
+  const closeFriendPicker = useCallback(() => {
+    setIsFriendPickerOpen(false)
+    setSelectedFriendIds(new Set())
   }, [])
 
   useEffect(() => {
@@ -780,10 +886,6 @@ function App() {
     [safeTop],
   )
 
-  const leaderboardPaddingTop = useMemo(
-    () => `calc(${safeTop}px + 16px)`,
-    [safeTop],
-  )
 
   const waitingColorLabel = turn === 'w' ? 'Black' : 'White'
   const opponentColorLabel = playerColor === 'white' ? 'Black' : 'White'
@@ -1038,62 +1140,31 @@ function App() {
             <span className="lobby-card__list-empty">No live players in queue yet.</span>
           )}
         </div>
-        <div
-          className="mt-4 flex w-full max-w-sm flex-col gap-3 rounded-2xl border border-purple-500/40 bg-white/5 p-4 shadow-[0_16px_40px_rgba(76,29,149,0.28)] backdrop-blur"
-          aria-label="Saved Farcaster friends"
-        >
-          <span className="text-xs font-semibold uppercase tracking-[0.3em] text-purple-200/80">
-            Farcaster friends
-          </span>
-          <form className="flex w-full gap-2" onSubmit={handleAddFriend}>
-            <input
-              className="h-11 flex-1 rounded-xl border border-purple-500/40 bg-white/10 px-3 text-sm text-white placeholder:text-purple-200/50 focus:border-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-400/60"
-              value={friendInput}
-              onChange={handleFriendInputChange}
-              placeholder="@friend"
-              aria-label="Add Farcaster friend"
-              autoComplete="off"
-            />
-            <button
-              type="submit"
-              className="h-11 rounded-xl bg-gradient-to-r from-purple-500 to-fuchsia-500 px-4 text-sm font-semibold text-white shadow-[0_10px_28px_rgba(110,37,184,0.45)] transition hover:shadow-[0_14px_32px_rgba(110,37,184,0.55)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300"
-            >
-              Save
-            </button>
-          </form>
-          {friends.length > 0 ? (
-            <ul className="flex flex-col gap-2">
-              {friends.map((handle) => (
-                <li
-                  key={handle}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-purple-500/30 bg-white/10 px-3 py-2 text-sm text-purple-100"
+        <div className="mt-4 flex w-full max-w-sm flex-col gap-2">
+          <button
+            type="button"
+            onClick={openFriendPicker}
+            disabled={isFetchingFriends || (!!friendFetchError && farcasterFriends.length === 0)}
+            className="h-11 rounded-2xl bg-gradient-to-r from-purple-500 to-fuchsia-500 text-sm font-semibold uppercase tracking-[0.2em] text-white shadow-[0_14px_34px_rgba(110,37,184,0.5)] transition hover:shadow-[0_18px_42px_rgba(110,37,184,0.6)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {isFetchingFriends ? 'Loading Farcaster friends…' : 'Invite friends from Farcaster'}
+          </button>
+          {friendFetchError ? (
+            <span className="text-xs text-rose-200">{friendFetchError}</span>
+          ) : farcasterFriends.length > 0 ? (
+            <div className="flex flex-wrap gap-2 text-xs text-purple-100/80">
+              {farcasterFriends.slice(0, 3).map((friend) => (
+                <button
+                  key={`lobby-friend-${friend.fid}`}
+                  type="button"
+                  onClick={() => handleFarcasterShare(friend.username)}
+                  className="rounded-full border border-white/30 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-white/90 transition hover:bg-white/15"
                 >
-                  <span className="font-medium text-white">@{handle}</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleFarcasterShare(handle)}
-                      className="rounded-lg bg-gradient-to-r from-purple-500 to-fuchsia-500 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-white shadow-md transition hover:shadow-lg"
-                    >
-                      Invite
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveFriend(handle)}
-                      className="rounded-lg border border-rose-400/60 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-rose-200 transition hover:bg-rose-500/20"
-                      aria-label={`Remove ${handle}`}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </li>
+                  @{friend.username}
+                </button>
               ))}
-            </ul>
-          ) : (
-            <span className="text-xs text-purple-100/80">
-              Add handles for one-tap Farcaster invites.
-            </span>
-          )}
+            </div>
+          ) : null}
         </div>
       </div>
     </section>
@@ -1183,29 +1254,16 @@ function App() {
                 </div>
               </div>
             ) : null}
-            {friends.length > 0 ? (
-              <div className="mt-3 flex w-full max-w-xs flex-col gap-2 rounded-2xl border border-purple-500/30 bg-white/5 p-3 shadow-[0_16px_40px_rgba(76,29,149,0.28)]">
-                <span className="board-card__queue-title text-xs uppercase tracking-[0.2em] text-purple-200/80">
-                  Share directly with
-                </span>
-                <ul className="flex flex-col gap-2">
-                  {friends.map((handle) => (
-                    <li
-                      key={`invite-friend-${handle}`}
-                      className="flex items-center justify-between gap-2 rounded-xl border border-purple-500/30 bg-white/10 px-3 py-2 text-xs text-purple-100"
-                    >
-                      <span className="font-medium text-white">@{handle}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleFarcasterShare(handle)}
-                        className="rounded-lg bg-gradient-to-r from-purple-500 to-fuchsia-500 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-wider text-white shadow-md"
-                      >
-                        Share invite
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            <button
+              type="button"
+              onClick={openFriendPicker}
+              disabled={isFetchingFriends || (!!friendFetchError && farcasterFriends.length === 0)}
+              className="board-card__starter-button board-card__starter-button--ghost h-11"
+            >
+              {isFetchingFriends ? 'Loading Farcaster friends…' : 'Invite friends from Farcaster'}
+            </button>
+            {friendFetchError && farcasterFriends.length === 0 ? (
+              <span className="text-xs text-rose-200">{friendFetchError}</span>
             ) : null}
             {matchStatus === 'searching' && availablePlayerLabels.length > 0 ? (
               <div className="board-card__queue mt-3 flex w-full max-w-xs flex-col gap-2 rounded-2xl border border-purple-500/30 bg-white/5 p-3 shadow-[0_16px_40px_rgba(76,29,149,0.28)]">
@@ -1379,22 +1437,6 @@ function App() {
     </section>
   )
 
-  const leaderboardPanel = (
-    <section
-      aria-label="Leaderboard"
-      className="fixed inset-x-0 top-0 z-40 border-b border-purple-500/30 bg-gradient-to-b from-[#1f0b36]/95 via-[#17092e]/90 to-transparent backdrop-blur"
-      style={{ paddingTop: leaderboardPaddingTop }}
-    >
-      <div className="mx-auto w-full max-w-md px-4 pb-4">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.28em] text-purple-200/80">
-          Current standings
-        </h2>
-        <div className="mt-3 rounded-2xl border border-purple-500/40 bg-white/5 p-3 shadow-[0_12px_32px_rgba(76,29,149,0.35)]">
-          <Leaderboard entries={leaderboard} variant="embedded" />
-        </div>
-      </div>
-    </section>
-  )
 
   const leaderboardContentPanel = (
     <section className="mt-2 w-full max-w-md rounded-2xl border border-purple-500/40 bg-white/5 p-4 text-white shadow-[0_16px_40px_rgba(76,29,149,0.35)]">
@@ -1427,7 +1469,6 @@ function App() {
       className="app relative min-h-screen bg-gradient-to-b from-[#100322] via-[#14042c] to-[#080213] text-white"
       style={appPaddingStyle}
     >
-      {leaderboardPanel}
       <div
         className="app__container mx-auto flex w-full max-w-3xl flex-col items-center gap-6 px-4 pb-20"
         ref={containerRef}
@@ -1474,6 +1515,81 @@ function App() {
         {activeView === 'captures' ? capturesPanel : null}
         {activeView === 'leaderboard' ? leaderboardContentPanel : null}
       </div>
+      {isFriendPickerOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-md md:items-center">
+          <div className="w-full max-w-md rounded-t-3xl bg-[#13072b] p-6 text-white shadow-[0_24px_60px_rgba(76,29,149,0.65)] md:rounded-3xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.24em] text-purple-200/80">
+                Invite friends
+              </h3>
+              <button
+                type="button"
+                onClick={closeFriendPicker}
+                className="text-xs font-semibold uppercase tracking-[0.24em] text-purple-200/70 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+            {friendFetchError && farcasterFriends.length === 0 ? (
+              <p className="mt-4 text-sm text-rose-200">{friendFetchError}</p>
+            ) : (
+              <div className="mt-4 max-h-64 overflow-y-auto rounded-2xl border border-purple-500/30 bg-white/5 p-2">
+                {isFetchingFriends ? (
+                  <p className="py-6 text-center text-sm text-purple-100/80">Loading Farcaster friends…</p>
+                ) : farcasterFriends.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-purple-100/80">
+                    No Farcaster friends found yet.
+                  </p>
+                ) : (
+                  farcasterFriends.map((friend) => {
+                    const isSelected = selectedFriendIds.has(friend.fid)
+                    return (
+                      <label
+                        key={`picker-friend-${friend.fid}`}
+                        className={`mb-2 flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 transition last:mb-0 ${
+                          isSelected
+                            ? 'bg-gradient-to-r from-purple-500/40 to-fuchsia-500/40 shadow-[0_12px_28px_rgba(110,37,184,0.35)]'
+                            : 'hover:bg-white/10'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-purple-500"
+                          checked={isSelected}
+                          onChange={() => toggleFriendSelection(friend.fid)}
+                        />
+                        <div className="flex flex-col">
+                          <span className="text-sm font-semibold text-white">@{friend.username}</span>
+                          {friend.displayName ? (
+                            <span className="text-xs text-purple-100/70">{friend.displayName}</span>
+                          ) : null}
+                        </div>
+                      </label>
+                    )
+                  })
+                )}
+              </div>
+            )}
+            <div className="mt-6 flex flex-col gap-3 md:flex-row">
+              <button
+                type="button"
+                onClick={handleSendFriendInvites}
+                disabled={selectedFriendUsernames.length === 0}
+                className="h-11 flex-1 rounded-2xl bg-gradient-to-r from-purple-500 to-fuchsia-500 text-sm font-semibold uppercase tracking-[0.2em] text-white shadow-[0_16px_36px_rgba(110,37,184,0.5)] transition hover:shadow-[0_20px_44px_rgba(110,37,184,0.6)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Send invites
+              </button>
+              <button
+                type="button"
+                onClick={closeFriendPicker}
+                className="h-11 flex-1 rounded-2xl border border-purple-500/40 bg-white/10 text-sm font-semibold uppercase tracking-[0.2em] text-purple-100 transition hover:bg-white/20"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {pendingCapture && address && (
         <CaptureTransactionPanel
           capture={pendingCapture}

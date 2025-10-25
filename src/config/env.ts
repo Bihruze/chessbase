@@ -8,6 +8,8 @@ type EnvConfig = {
   baseSepoliaRpcUrl?: string
   captureTarget?: string
   captureContractAddress?: string
+  farcasterApiUrl?: string
+  farcasterApiToken?: string
 }
 
 const toSupportedChain = (value: string | undefined): SupportedChain => {
@@ -25,4 +27,6 @@ export const env: EnvConfig = {
   baseSepoliaRpcUrl: import.meta.env.VITE_BASE_SEPOLIA_RPC_URL,
   captureTarget: import.meta.env.VITE_CAPTURE_TARGET,
   captureContractAddress: import.meta.env.VITE_CAPTURE_CONTRACT_ADDRESS,
+  farcasterApiUrl: import.meta.env.VITE_FARCASTER_API_URL,
+  farcasterApiToken: import.meta.env.VITE_FARCASTER_API_TOKEN,
 }
