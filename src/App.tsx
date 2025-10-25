@@ -1,7 +1,7 @@
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Chessboard } from 'react-chessboard'
 import type { PieceDropHandlerArgs, PieceHandlerArgs, SquareHandlerArgs } from 'react-chessboard'
-import { useMiniKit } from '@coinbase/onchainkit/minikit'
+import { useMiniKit, useOpenUrl } from '@coinbase/onchainkit/minikit'
 import { useAccount, usePublicClient } from 'wagmi'
 import { Transaction, TransactionButton, TransactionToast } from '@coinbase/onchainkit/transaction'
 import { encodeFunctionData, parseGwei, type Hex } from 'viem'
@@ -130,6 +130,11 @@ function App() {
   const captureTarget = (env.captureTarget ?? DEFAULT_CAPTURE_CONTRACT) as Hex
   const containerRef = useRef<HTMLDivElement | null>(null)
   const boardContainerRef = useRef<HTMLDivElement | null>(null)
+  const headerRef = useRef<HTMLElement | null>(null)
+  const navRef = useRef<HTMLElement | null>(null)
+  const topPlayerStripRef = useRef<HTMLDivElement | null>(null)
+  const bottomPlayerStripRef = useRef<HTMLDivElement | null>(null)
+  const boardControlsRef = useRef<HTMLDivElement | null>(null)
   const autoJoinInviteRef = useRef(false)
   const playerProfileName = context?.user?.displayName ?? context?.user?.username ?? 'Base player'
 
@@ -174,6 +179,13 @@ function App() {
     (id: string) => `${baseShareUrl}?invite=${id}`,
     [baseShareUrl],
   )
+  const openUrl = useOpenUrl({
+    fallback: (url: string) => {
+      if (typeof window !== 'undefined') {
+        window.open(url, '_blank', 'noopener,noreferrer')
+      }
+    },
+  })
 
   const handleCaptureComplete = useCallback(
     (entry: CaptureLogEntry) => {
@@ -374,13 +386,9 @@ function App() {
       : `♟️ Playing ${APP_NAME} on Base — take your shot!`
     const composeUrl = new URL('https://warpcast.com/~/compose')
     composeUrl.searchParams.set('text', `${shareLine}\n${shareUrl}`)
-    if (typeof window !== 'undefined') {
-      window.open(composeUrl.toString(), '_blank', 'noopener,noreferrer')
-      setShareHint('Opening Farcaster compose…')
-    } else {
-      setShareHint(`Farcaster share: ${composeUrl.toString()}`)
-    }
-  }, [resolveShareUrl])
+    openUrl(composeUrl.toString())
+    setShareHint('Opening Farcaster compose…')
+  }, [openUrl, resolveShareUrl])
 
   useEffect(() => {
     if (matchStatus !== 'inviting') {
@@ -512,6 +520,22 @@ function App() {
   }, [setMiniAppReady])
 
   useEffect(() => {
+    if (typeof document === 'undefined') {
+      return
+    }
+    const htmlStyle = document.documentElement.style
+    const bodyStyle = document.body.style
+    const previousHtmlOverscroll = htmlStyle.overscrollBehaviorY
+    const previousBodyOverscroll = bodyStyle.overscrollBehaviorY
+    htmlStyle.overscrollBehaviorY = 'contain'
+    bodyStyle.overscrollBehaviorY = 'contain'
+    return () => {
+      htmlStyle.overscrollBehaviorY = previousHtmlOverscroll
+      bodyStyle.overscrollBehaviorY = previousBodyOverscroll
+    }
+  }, [])
+
+  useEffect(() => {
     if (hasSessionStarted) {
       setActiveView((current) => (current === 'lobby' ? 'board' : current))
     } else {
@@ -553,21 +577,37 @@ function App() {
     }
 
     const computeBoardSize = () => {
-      const rect = node.getBoundingClientRect()
-      const width = rect.width
-      const height = rect.height || width
+      const boardNode = boardContainerRef.current
+      if (!boardNode) {
+        return
+      }
+
+      const safeInsets = context?.client?.safeAreaInsets
+      const width = boardNode.getBoundingClientRect().width
       if (width <= 0) {
         return
       }
 
-      const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : width
-      const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : height
-      const margin = 24
-      const viewportWidthCap = Math.max(240, viewportWidth - margin * 2)
-      const viewportHeightCap = Math.max(240, viewportHeight - margin * 2)
-      const raw = Math.min(width, height || width, viewportWidthCap, viewportHeightCap)
-      const squareSize = Math.max(1, Math.floor(raw / 8))
-      const boardPixels = Math.max(240, Math.floor(Math.min(raw, squareSize * 8)))
+      const viewportHeight = window.innerHeight
+      const headerHeight = headerRef.current?.getBoundingClientRect().height ?? 0
+      const navHeight = navRef.current?.getBoundingClientRect().height ?? 0
+      const topStripHeight = topPlayerStripRef.current?.getBoundingClientRect().height ?? 0
+      const bottomStripHeight =
+        bottomPlayerStripRef.current?.getBoundingClientRect().height ?? 0
+      const controlsHeight = boardControlsRef.current?.getBoundingClientRect().height ?? 0
+      const hintHeight = shareHint ? 28 : 0
+      const bannerHeight = mateBanner ? 36 : 0
+      const paddingReserve =
+        (safeInsets?.top ?? 0) + (safeInsets?.bottom ?? 0) + hintHeight + bannerHeight + 56
+
+      const availableHeight = Math.max(
+        220,
+        viewportHeight - headerHeight - navHeight - topStripHeight - bottomStripHeight - controlsHeight - paddingReserve,
+      )
+
+      const size = Math.min(width, availableHeight)
+      const squareSize = Math.max(1, Math.floor(size / 8))
+      const boardPixels = Math.max(200, Math.floor(Math.min(size, squareSize * 8)))
 
       setBoardSize(boardPixels)
     }
@@ -580,9 +620,13 @@ function App() {
       return () => observer.disconnect()
     }
 
-    window.addEventListener('resize', computeBoardSize)
-    return () => window.removeEventListener('resize', computeBoardSize)
-  }, [])
+    const handleResize = () => {
+      window.requestAnimationFrame(() => computeBoardSize())
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [context?.client?.safeAreaInsets?.bottom, context?.client?.safeAreaInsets?.top, mateBanner, shareHint, matchStatus, availablePlayerLabels.length, hasSessionStarted])
 
   useEffect(() => {
     if (!hasSessionStarted && history.length > 0) {
@@ -949,8 +993,8 @@ function App() {
   )
 
   const boardPanel = (
-    <section className="board-card" aria-label="Chess board">
-      <div className="player-strip">
+    <section className="board-card board-card--full" aria-label="Chess board">
+      <div className="player-strip" ref={topPlayerStripRef}>
         <div>
           <span className="player-strip__label">{opponentColorLabel}</span>
           <h2 className="player-strip__name">{opponentDisplayName}</h2>
@@ -1036,7 +1080,7 @@ function App() {
         ) : null}
       </div>
 
-      <div className="board-card__controls" role="group" aria-label="Board actions">
+      <div className="board-card__controls" role="group" aria-label="Board actions" ref={boardControlsRef}>
         <button type="button" onClick={handleNewGame}>
           New game
         </button>
@@ -1076,7 +1120,7 @@ function App() {
         </div>
       ) : null}
 
-      <div className="player-strip">
+      <div className="player-strip" ref={bottomPlayerStripRef}>
         <div>
           <span className="player-strip__label">{playerColorLabel}</span>
           <h2 className="player-strip__name">{userDisplayName}</h2>
@@ -1193,7 +1237,7 @@ function App() {
   return (
     <div className="app" style={containerStyle}>
       <div className="app__container" ref={containerRef}>
-        <header className="app__header">
+        <header className="app__header" ref={headerRef}>
           <div className="app__title">
             <span className="app__logo" aria-hidden="true">♞</span>
             <h1>{APP_NAME}</h1>
@@ -1204,7 +1248,7 @@ function App() {
         </header>
 
         {hasSessionStarted ? (
-          <nav className="app__nav" aria-label="App sections">
+          <nav className="app__nav" aria-label="App sections" ref={navRef}>
             {navItems.map((item) => (
               <button
                 key={item.id}

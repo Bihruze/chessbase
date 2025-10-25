@@ -283,6 +283,12 @@ body {
   min-height: 0;
 }
 
+.board-card--full {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
 .lobby-card {
   align-items: center;
   text-align: center;
@@ -522,6 +528,20 @@ body {
   overscroll-behavior: contain;
 }
 
+@media (max-width: 540px) {
+  .board-card__board {
+    max-height: min(60vh, 420px);
+  }
+
+  .player-strip {
+    padding: 10px 14px;
+  }
+
+  .board-card__controls {
+    grid-template-columns: 1fr;
+  }
+}
+
 .board-card__board .react-chessboard {
   width: 100% !important;
   height: 100% !important;
@@ -746,6 +766,7 @@ body {
   font-size: 0.85rem;
   color: rgba(233, 213, 255, 0.8);
   text-align: center;
+  min-height: 20px;
 }
 
 .board-card__hint {
@@ -753,6 +774,7 @@ body {
   font-size: 0.8rem;
   color: rgba(165, 180, 252, 0.85);
   text-align: center;
+  min-height: 18px;
 }
 
 .board-card__banner {
