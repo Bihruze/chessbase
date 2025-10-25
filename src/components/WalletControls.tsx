@@ -4,11 +4,14 @@ import { useAccount, useConnect, useDisconnect } from 'wagmi'
 import { useMiniKit } from '@coinbase/onchainkit/minikit'
 
 const FARCASTER_CONNECTOR_ID = 'farcaster'
+const BROWSER_WALLET_CONNECTOR_ID = 'injected'
 
-const ALWAYS_AVAILABLE = new Set([FARCASTER_CONNECTOR_ID])
+const ALWAYS_AVAILABLE = new Set([FARCASTER_CONNECTOR_ID, BROWSER_WALLET_CONNECTOR_ID])
+const MINI_APP_ALLOWED = new Set([FARCASTER_CONNECTOR_ID, BROWSER_WALLET_CONNECTOR_ID])
 
 const CONNECTOR_LABELS: Record<string, string> = {
   [FARCASTER_CONNECTOR_ID]: 'Farcaster Wallet',
+  [BROWSER_WALLET_CONNECTOR_ID]: 'Browser Wallet',
 }
 
 const resolveConnectorLabel = (connector: Connector) => {
@@ -62,7 +65,7 @@ export function WalletControls() {
   const uniqueConnectors = useMemo(() => {
     const seen = new Set<string>()
     return connectors.filter((connector) => {
-      if (isMiniApp && connector.id !== FARCASTER_CONNECTOR_ID) {
+      if (isMiniApp && !MINI_APP_ALLOWED.has(connector.id)) {
         return false
       }
       if (seen.has(connector.id)) {

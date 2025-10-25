@@ -1,7 +1,7 @@
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Chessboard } from 'react-chessboard'
 import type { PieceDropHandlerArgs, PieceHandlerArgs, SquareHandlerArgs } from 'react-chessboard'
-import { useMiniKit, useOpenUrl } from '@coinbase/onchainkit/minikit'
+import { useMiniKit } from '@coinbase/onchainkit/minikit'
 import { useAccount, usePublicClient } from 'wagmi'
 import { Transaction, TransactionButton, TransactionToast } from '@coinbase/onchainkit/transaction'
 import { encodeFunctionData, parseGwei, type Hex } from 'viem'
@@ -10,7 +10,7 @@ import type { CaptureEvent } from './hooks/useChessGame'
 import { Leaderboard } from './components/Leaderboard'
 import { useLeaderboard } from './hooks/useLeaderboard'
 import { useMatchmaking } from './hooks/useMatchmaking'
-import { APP_NAME, APP_URL, DEFAULT_CAPTURE_CONTRACT } from './config/constants'
+import { APP_NAME, DEFAULT_CAPTURE_CONTRACT } from './config/constants'
 import { shortenHex } from './utils/strings'
 import { selectEngineMove } from './utils/chessAi'
 import { env } from './config/env'
@@ -115,7 +115,6 @@ function App() {
   const [boardOrientation, setBoardOrientation] = useState<'white' | 'black'>('white')
   const [boardSize, setBoardSize] = useState(320)
   const isSponsored = Boolean(env.onchainKitApiKey)
-  const [shareHint, setShareHint] = useState<string | null>(null)
   const [mateBanner, setMateBanner] = useState<
     { text: string; variant: 'win' | 'loss' | 'draw' } | null
   >(null)
@@ -125,8 +124,6 @@ function App() {
   const [hoveredSquare, setHoveredSquare] = useState<string | null>(null)
   const [hasSessionStarted, setHasSessionStarted] = useState(false)
   const [activeView, setActiveView] = useState<AppView>('lobby')
-  const [pendingInviteId, setPendingInviteId] = useState<string | null>(null)
-  const [inviteLink, setInviteLink] = useState<string | null>(null)
   const captureTarget = (env.captureTarget ?? DEFAULT_CAPTURE_CONTRACT) as Hex
   const containerRef = useRef<HTMLDivElement | null>(null)
   const boardContainerRef = useRef<HTMLDivElement | null>(null)
@@ -135,7 +132,6 @@ function App() {
   const topPlayerStripRef = useRef<HTMLDivElement | null>(null)
   const bottomPlayerStripRef = useRef<HTMLDivElement | null>(null)
   const boardControlsRef = useRef<HTMLDivElement | null>(null)
-  const autoJoinInviteRef = useRef(false)
   const playerProfileName = context?.user?.displayName ?? context?.user?.username ?? 'Base player'
 
   const handleOpponentMove = useCallback(
@@ -156,37 +152,11 @@ function App() {
     startBotMatch,
     beginQuickMatch,
     cancelMatchmaking,
-    createInvite,
-    joinInvite,
     availableMatches,
-    matchId,
     opponentLabel,
     availablePlayerLabels,
   } = useMatchmaking({ onOpponentMove: handleOpponentMove, playerLabel: playerProfileName })
   const botTurnColor = playerColor === 'white' ? 'b' : 'w'
-  const baseShareUrl = useMemo(() => {
-    const envUrl = APP_URL && APP_URL !== 'https://example.com' ? APP_URL.trim() : null
-    if (envUrl && envUrl.length > 0) {
-      return envUrl.replace(/\/$/, '')
-    }
-    if (typeof window === 'undefined' || !window.location) {
-      return 'https://example.com'
-    }
-    const { origin, pathname } = window.location
-    return `${origin}${pathname}`
-  }, [])
-  const buildInviteLink = useCallback(
-    (id: string) => `${baseShareUrl}?invite=${id}`,
-    [baseShareUrl],
-  )
-  const openUrl = useOpenUrl({
-    fallback: (url: string) => {
-      if (typeof window !== 'undefined') {
-        window.open(url, '_blank', 'noopener,noreferrer')
-      }
-    },
-  })
-
   const handleCaptureComplete = useCallback(
     (entry: CaptureLogEntry) => {
       setCaptureLog((prev) => {
@@ -227,30 +197,13 @@ function App() {
 
   const handleNewGame = useCallback(() => {
     cancelMatchmaking('restart')
-    setPendingInviteId(null)
-    setInviteLink(null)
     setHasSessionStarted(false)
-    setShareHint(null)
     setActiveView('lobby')
     resetBoardState()
   }, [cancelMatchmaking, resetBoardState])
 
-  const handleBeginInvite = useCallback(() => {
-    resetBoardState()
-    const inviteId = createInvite()
-    const link = buildInviteLink(inviteId)
-    setPendingInviteId(inviteId)
-    setInviteLink(link)
-    setShareHint(null)
-    setHasSessionStarted(true)
-    setActiveView('board')
-  }, [buildInviteLink, createInvite, resetBoardState])
-
   const handleBeginQuickMatch = useCallback(() => {
     resetBoardState()
-    setPendingInviteId(null)
-    setInviteLink(null)
-    setShareHint(null)
     setHasSessionStarted(true)
     beginQuickMatch()
     setActiveView('board')
@@ -258,30 +211,27 @@ function App() {
 
   const handleBeginBotMatch = useCallback(() => {
     resetBoardState()
-    setPendingInviteId(null)
-    setInviteLink(null)
-    setShareHint(null)
     setHasSessionStarted(true)
     startBotMatch()
     setActiveView('board')
   }, [resetBoardState, startBotMatch])
 
   const canPlay = matchStatus === 'matched' || matchStatus === 'bot'
-  const isAwaitingMatch =
-    matchStatus === 'inviting' || matchStatus === 'searching' || matchStatus === 'joining'
+  const isAwaitingMatch = matchStatus === 'searching' || matchStatus === 'joining'
   const handleCancelMatch = useCallback(() => {
     cancelMatchmaking('user-cancel')
-    setPendingInviteId(null)
-    setInviteLink(null)
-    setShareHint(null)
+    resetBoardState()
+    setHasSessionStarted(false)
+    setActiveView('lobby')
+  }, [cancelMatchmaking, resetBoardState])
+
+  const handleBackToLobby = useCallback(() => {
+    cancelMatchmaking('back-to-lobby')
     resetBoardState()
     setHasSessionStarted(false)
     setActiveView('lobby')
   }, [cancelMatchmaking, resetBoardState])
   const waitingMessage = useMemo(() => {
-    if (matchStatus === 'inviting') {
-      return 'Share your invite link so a friend can join as black.'
-    }
     if (matchStatus === 'searching') {
       if (availablePlayerLabels.length > 0) {
         return `Players queued: ${availablePlayerLabels.join(', ')}`
@@ -293,117 +243,6 @@ function App() {
     }
     return null
   }, [availablePlayerLabels, matchStatus])
-
-  const resolveShareUrl = useCallback(() => {
-    if (matchStatus === 'inviting' && matchId) {
-      return { url: buildInviteLink(matchId), isInvite: true }
-    }
-    if (pendingInviteId && inviteLink) {
-      return { url: inviteLink, isInvite: true }
-    }
-    return { url: baseShareUrl, isInvite: false }
-  }, [baseShareUrl, buildInviteLink, inviteLink, matchId, matchStatus, pendingInviteId])
-
-  const copyText = useCallback(async (value: string) => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(value)
-        return true
-      } catch (error) {
-        console.warn('clipboard write failed', error)
-      }
-    }
-
-    if (typeof document === 'undefined') {
-      return false
-    }
-
-    try {
-      const textarea = document.createElement('textarea')
-      textarea.value = value
-      textarea.setAttribute('readonly', '')
-      textarea.style.position = 'fixed'
-      textarea.style.opacity = '0'
-      document.body.appendChild(textarea)
-      textarea.select()
-      const success = document.execCommand?.('copy') ?? false
-      document.body.removeChild(textarea)
-      return success
-    } catch (error) {
-      console.warn('fallback copy failed', error)
-      return false
-    }
-  }, [])
-
-  const handleShare = useCallback(async () => {
-    const { url: shareUrl, isInvite } = resolveShareUrl()
-    if (!hasSessionStarted && !isInvite) {
-      setShareHint('Pick a mode to generate a match link.')
-      return
-    }
-
-    const shareText = isInvite
-      ? `♟️ Challenge me on ${APP_NAME}! Join my board:`
-      : `♟️ Playing ${APP_NAME} on Base — take your shot!`
-
-    try {
-      if (typeof navigator !== 'undefined' && navigator.share) {
-        await navigator.share({
-          title: APP_NAME,
-          text: shareText,
-          url: shareUrl,
-        })
-        setShareHint(isInvite ? 'Invite shared via device sheet' : 'Shared via device sheet')
-        return
-      }
-
-      if (await copyText(shareUrl)) {
-        setShareHint(isInvite ? 'Invite link copied to clipboard' : 'Game link copied to clipboard')
-        return
-      }
-
-      setShareHint(isInvite ? `Invite link: ${shareUrl}` : `Share this link manually: ${shareUrl}`)
-    } catch (error) {
-      console.error('share failed', error)
-      setShareHint('Sharing failed — try again later')
-    }
-  }, [copyText, hasSessionStarted, resolveShareUrl])
-
-  const handleCopyInvite = useCallback(async () => {
-    const { url: shareUrl, isInvite } = resolveShareUrl()
-    const copied = await copyText(shareUrl)
-    if (copied) {
-      setShareHint(isInvite ? 'Invite link copied to clipboard' : 'Game link copied to clipboard')
-      return
-    }
-    setShareHint(isInvite ? `Invite link: ${shareUrl}` : `Copy manually: ${shareUrl}`)
-  }, [copyText, resolveShareUrl])
-
-  const handleFarcasterShare = useCallback(() => {
-    const { url: shareUrl, isInvite } = resolveShareUrl()
-    const shareLine = isInvite
-      ? `♟️ Challenge me on ${APP_NAME}!`
-      : `♟️ Playing ${APP_NAME} on Base — take your shot!`
-    const composeUrl = new URL('https://warpcast.com/~/compose')
-    composeUrl.searchParams.set('text', `${shareLine}\n${shareUrl}`)
-    openUrl(composeUrl.toString())
-    setShareHint('Opening Farcaster compose…')
-  }, [openUrl, resolveShareUrl])
-
-  useEffect(() => {
-    if (matchStatus !== 'inviting') {
-      if (pendingInviteId || inviteLink) {
-        setPendingInviteId(null)
-        setInviteLink(null)
-      }
-      return
-    }
-    if (matchId && matchId !== pendingInviteId) {
-      const link = buildInviteLink(matchId)
-      setPendingInviteId(matchId)
-      setInviteLink(link)
-    }
-  }, [buildInviteLink, inviteLink, matchId, matchStatus, pendingInviteId])
 
   const clearMoveHints = useCallback(() => {
     setMoveHints({})
@@ -547,29 +386,6 @@ function App() {
     if (typeof window === 'undefined') {
       return
     }
-    if (autoJoinInviteRef.current) {
-      return
-    }
-    const params = new URLSearchParams(window.location.search)
-    const inviteParam = params.get('invite')
-    if (!inviteParam) {
-      return
-    }
-    autoJoinInviteRef.current = true
-    resetBoardState()
-    joinInvite(inviteParam)
-    setHasSessionStarted(true)
-    setActiveView('board')
-    const url = new URL(window.location.href)
-    params.delete('invite')
-    url.search = params.toString()
-    window.history.replaceState({}, document.title, url.toString())
-  }, [joinInvite, resetBoardState, setActiveView])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
 
     const node = boardContainerRef.current ?? containerRef.current
     if (!node) {
@@ -595,10 +411,9 @@ function App() {
       const bottomStripHeight =
         bottomPlayerStripRef.current?.getBoundingClientRect().height ?? 0
       const controlsHeight = boardControlsRef.current?.getBoundingClientRect().height ?? 0
-      const hintHeight = shareHint ? 28 : 0
       const bannerHeight = mateBanner ? 36 : 0
       const paddingReserve =
-        (safeInsets?.top ?? 0) + (safeInsets?.bottom ?? 0) + hintHeight + bannerHeight + 56
+        (safeInsets?.top ?? 0) + (safeInsets?.bottom ?? 0) + bannerHeight + 56
 
       const availableHeight = Math.max(
         220,
@@ -626,7 +441,7 @@ function App() {
 
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [context?.client?.safeAreaInsets?.bottom, context?.client?.safeAreaInsets?.top, mateBanner, shareHint, matchStatus, availablePlayerLabels.length, hasSessionStarted])
+  }, [context?.client?.safeAreaInsets?.bottom, context?.client?.safeAreaInsets?.top, mateBanner, matchStatus, availablePlayerLabels.length, hasSessionStarted])
 
   useEffect(() => {
     if (!hasSessionStarted && history.length > 0) {
@@ -643,14 +458,6 @@ function App() {
   useEffect(() => {
     setBoardOrientation(playerColor)
   }, [playerColor])
-
-  useEffect(() => {
-    if (!shareHint) {
-      return
-    }
-    const timer = setTimeout(() => setShareHint(null), 3200)
-    return () => clearTimeout(timer)
-  }, [shareHint])
 
   useEffect(() => {
     if (opponentType !== 'bot') {
@@ -935,22 +742,13 @@ function App() {
     setBoardOrientation((current) => (current === 'white' ? 'black' : 'white'))
   }
 
-  const shareButtonDisabled = matchStatus === 'searching' || matchStatus === 'joining'
-
   const lobbyPanel = (
     <section className="board-card lobby-card" aria-label="Match setup">
       <div className="lobby-card__content">
         <span className="lobby-card__eyebrow">Choose a mode</span>
-        <h2>Invite friends or battle Base players.</h2>
-        <p>Select how you want to start your next chess session.</p>
+        <h2>Battle Base players or challenge the bot.</h2>
+        <p>Pick how you want to start your next chess session.</p>
         <div className="board-card__starter-actions">
-          <button
-            type="button"
-            onClick={handleBeginInvite}
-            className="board-card__starter-button"
-          >
-            Invite a friend
-          </button>
           <button
             type="button"
             onClick={handleBeginQuickMatch}
@@ -972,7 +770,7 @@ function App() {
         <p className="lobby-card__note">
           {availableMatches > 0
             ? `Ready players waiting: ${availableMatches}. Jump in and claim white or black.`
-            : 'Share an invite or queue up to find a live opponent.'}
+            : 'Queue up to find a live opponent or warm up against the Base Bot.'}
         </p>
         <div className="lobby-card__list" aria-live="polite">
           {availablePlayerLabels.length > 0 ? (
@@ -1032,37 +830,14 @@ function App() {
         {isAwaitingMatch ? (
           <div className="board-card__starter" role="status">
             <span className="board-card__starter-eyebrow">
-              {matchStatus === 'inviting' ? 'Waiting for your friend' : 'Matchmaking'}
+              {matchStatus === 'searching' ? 'Matchmaking' : 'Connecting'}
             </span>
             <h3>
-              {matchStatus === 'inviting'
-                ? 'Send the invite link to begin.'
-                : matchStatus === 'searching'
-                  ? 'Looking for another Base player…'
-                  : 'Joining the board…'}
+              {matchStatus === 'searching'
+                ? 'Looking for another Base player…'
+                : 'Joining the board…'}
             </h3>
             {waitingMessage ? <p>{waitingMessage}</p> : null}
-            {matchStatus === 'inviting' && inviteLink ? (
-              <div className="board-card__invite">
-                <code>{inviteLink}</code>
-                <div className="board-card__invite-actions">
-                  <button
-                    type="button"
-                    onClick={handleCopyInvite}
-                    className="board-card__starter-button"
-                  >
-                    Copy invite link
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleFarcasterShare}
-                    className="board-card__starter-button board-card__starter-button--ghost"
-                  >
-                    Share on Farcaster
-                  </button>
-                </div>
-              </div>
-            ) : null}
             {matchStatus === 'searching' && availablePlayerLabels.length > 0 ? (
               <div className="board-card__queue">
                 <span className="board-card__queue-title">Players ready right now</span>
@@ -1073,7 +848,11 @@ function App() {
                 </ul>
               </div>
             ) : null}
-            <button type="button" onClick={handleCancelMatch} className="board-card__starter-cancel">
+            <button
+              type="button"
+              onClick={handleCancelMatch}
+              className="board-card__starter-cancel"
+            >
               Cancel
             </button>
           </div>
@@ -1086,27 +865,14 @@ function App() {
         </button>
         {hasSessionStarted ? (
           <>
-            <button
-              type="button"
-              className="board-card__share"
-              onClick={handleShare}
-              disabled={shareButtonDisabled}
-            >
-              Share game
-            </button>
-            <button
-              type="button"
-              className="board-card__share board-card__share--secondary"
-              onClick={handleFarcasterShare}
-              disabled={shareButtonDisabled}
-            >
-              Share on Farcaster
-            </button>
             <button type="button" onClick={undoMove} disabled={!history.length}>
               Undo move
             </button>
             <button type="button" onClick={toggleOrientation}>
               Flip board
+            </button>
+            <button type="button" onClick={handleBackToLobby}>
+              Back
             </button>
           </>
         ) : null}
@@ -1137,11 +903,6 @@ function App() {
       <p className="board-card__note" aria-live="polite">
         {lastCaptureCopy}
       </p>
-      {shareHint ? (
-        <p className="board-card__hint" aria-live="polite">
-          {shareHint}
-        </p>
-      ) : null}
     </section>
   )
 
