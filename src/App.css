@@ -368,6 +368,118 @@ body {
   color: rgba(209, 196, 253, 0.68);
 }
 
+.friend-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 360px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(19, 9, 38, 0.7);
+  border: 1px solid rgba(129, 140, 248, 0.28);
+}
+
+.friend-card__title {
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(196, 181, 253, 0.7);
+}
+
+.friend-card__form {
+  display: flex;
+  gap: 8px;
+}
+
+.friend-card__input {
+  flex: 1 1 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  background: rgba(21, 13, 40, 0.9);
+  color: rgba(236, 233, 255, 0.92);
+  font-size: 0.85rem;
+}
+
+.friend-card__input::placeholder {
+  color: rgba(148, 163, 184, 0.6);
+}
+
+.friend-card__submit {
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(129, 140, 248, 0.6);
+  background: linear-gradient(135deg, rgba(129, 140, 248, 0.75), rgba(168, 85, 247, 0.82));
+  color: rgba(245, 243, 255, 0.92);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.friend-card__submit:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(129, 140, 248, 0.3);
+}
+
+.friend-card__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.friend-card__list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(30, 20, 60, 0.65);
+  border: 1px solid rgba(168, 85, 247, 0.24);
+  font-size: 0.9rem;
+  color: rgba(233, 233, 255, 0.9);
+}
+
+.friend-card__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.friend-card__action {
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(129, 140, 248, 0.6);
+  background: rgba(15, 23, 42, 0.65);
+  color: rgba(226, 232, 240, 0.9);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.friend-card__action:hover {
+  background: rgba(59, 130, 246, 0.35);
+  color: #f8fafc;
+}
+
+.friend-card__action--danger {
+  border-color: rgba(244, 114, 182, 0.45);
+}
+
+.friend-card__action--danger:hover {
+  background: rgba(244, 114, 182, 0.3);
+}
+
+.friend-card__empty {
+  font-size: 0.8rem;
+  color: rgba(209, 196, 253, 0.72);
+}
+
 .info-card {
   display: block;
   padding: 0;
@@ -664,6 +776,36 @@ body {
   border-radius: 16px;
   background: rgba(17, 16, 46, 0.72);
   border: 1px solid rgba(168, 85, 247, 0.24);
+}
+
+.board-card__friends {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 320px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: rgba(13, 21, 48, 0.78);
+  border: 1px solid rgba(129, 140, 248, 0.32);
+}
+
+.board-card__friends ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.board-card__friends li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.86rem;
+  color: rgba(233, 233, 255, 0.88);
 }
 
 .board-card__queue-title {

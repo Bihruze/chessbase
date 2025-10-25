@@ -1,4 +1,4 @@
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, type ChangeEvent, type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Chessboard } from 'react-chessboard'
 import type { PieceDropHandlerArgs, PieceHandlerArgs, SquareHandlerArgs } from 'react-chessboard'
 import { useMiniKit, useOpenUrl } from '@coinbase/onchainkit/minikit'
@@ -10,6 +10,7 @@ import type { CaptureEvent } from './hooks/useChessGame'
 import { Leaderboard } from './components/Leaderboard'
 import { useLeaderboard } from './hooks/useLeaderboard'
 import { useMatchmaking } from './hooks/useMatchmaking'
+import { useFriendList } from './hooks/useFriendList'
 import { APP_NAME, APP_URL, DEFAULT_CAPTURE_CONTRACT } from './config/constants'
 import { shortenHex } from './utils/strings'
 import { selectEngineMove } from './utils/chessAi'
@@ -137,6 +138,8 @@ function App() {
   const boardControlsRef = useRef<HTMLDivElement | null>(null)
   const autoJoinInviteRef = useRef(false)
   const playerProfileName = context?.user?.displayName ?? context?.user?.username ?? 'Base player'
+  const { friends, addFriend, removeFriend } = useFriendList()
+  const [friendInput, setFriendInput] = useState('')
 
   const handleOpponentMove = useCallback(
     (san: string, fen: string) => {
@@ -379,16 +382,45 @@ function App() {
     setShareHint(isInvite ? `Invite link: ${shareUrl}` : `Copy manually: ${shareUrl}`)
   }, [copyText, resolveShareUrl])
 
-  const handleFarcasterShare = useCallback(() => {
+  const handleFarcasterShare = useCallback((friendHandle?: string) => {
     const { url: shareUrl, isInvite } = resolveShareUrl()
     const shareLine = isInvite
       ? `♟️ Challenge me on ${APP_NAME}!`
       : `♟️ Playing ${APP_NAME} on Base — take your shot!`
+    const mention = friendHandle ? (friendHandle.startsWith('@') ? friendHandle : `@${friendHandle}`) : null
     const composeUrl = new URL('https://warpcast.com/~/compose')
-    composeUrl.searchParams.set('text', `${shareLine}\n${shareUrl}`)
+    const text = mention ? `${shareLine}\n${mention}\n${shareUrl}` : `${shareLine}\n${shareUrl}`
+    composeUrl.searchParams.set('text', text)
     openUrl(composeUrl.toString())
-    setShareHint('Opening Farcaster compose…')
+    setShareHint(mention ? `Sharing invite with ${mention}` : 'Opening Farcaster compose…')
   }, [openUrl, resolveShareUrl])
+
+  const handleAddFriend = useCallback(
+    (event?: FormEvent<HTMLFormElement>) => {
+      event?.preventDefault()
+      if (!friendInput.trim()) {
+        setShareHint('Enter a Farcaster handle to save.')
+        return
+      }
+      const result = addFriend(friendInput)
+      if (!result.success) {
+        setShareHint(result.message ?? 'Could not save friend.')
+        return
+      }
+      setFriendInput('')
+      setShareHint('Friend saved for quick invites.')
+    },
+    [addFriend, friendInput],
+  )
+
+  const handleRemoveFriend = useCallback((handle: string) => {
+    removeFriend(handle)
+    setShareHint(`Removed @${handle}`)
+  }, [removeFriend])
+
+  const handleFriendInputChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setFriendInput(event.target.value)
+  }, [])
 
   useEffect(() => {
     if (matchStatus !== 'inviting') {
@@ -988,6 +1020,50 @@ function App() {
             <span className="lobby-card__list-empty">No live players in queue yet.</span>
           )}
         </div>
+        <div className="friend-card" aria-label="Saved Farcaster friends">
+          <span className="friend-card__title">Farcaster friends</span>
+          <form className="friend-card__form" onSubmit={handleAddFriend}>
+            <input
+              className="friend-card__input"
+              value={friendInput}
+              onChange={handleFriendInputChange}
+              placeholder="@friend"
+              aria-label="Add Farcaster friend"
+              autoComplete="off"
+            />
+            <button type="submit" className="friend-card__submit">
+              Save
+            </button>
+          </form>
+          {friends.length > 0 ? (
+            <ul className="friend-card__list">
+              {friends.map((handle) => (
+                <li key={handle}>
+                  <span>@{handle}</span>
+                  <div className="friend-card__actions">
+                    <button
+                      type="button"
+                      onClick={() => handleFarcasterShare(handle)}
+                      className="friend-card__action"
+                    >
+                      Invite
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveFriend(handle)}
+                      className="friend-card__action friend-card__action--danger"
+                      aria-label={`Remove ${handle}`}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className="friend-card__empty">Add handles for one-tap Farcaster invites.</span>
+          )}
+        </div>
       </div>
     </section>
   )
@@ -1055,12 +1131,31 @@ function App() {
                   </button>
                   <button
                     type="button"
-                    onClick={handleFarcasterShare}
+                    onClick={() => handleFarcasterShare()}
                     className="board-card__starter-button board-card__starter-button--ghost"
                   >
                     Share on Farcaster
                   </button>
                 </div>
+              </div>
+            ) : null}
+            {friends.length > 0 ? (
+              <div className="board-card__friends">
+                <span className="board-card__queue-title">Share directly with</span>
+                <ul>
+                  {friends.map((handle) => (
+                    <li key={`invite-friend-${handle}`}>
+                      <span>@{handle}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleFarcasterShare(handle)}
+                        className="board-card__starter-button board-card__starter-button--ghost"
+                      >
+                        Share invite
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
             {matchStatus === 'searching' && availablePlayerLabels.length > 0 ? (
@@ -1097,7 +1192,7 @@ function App() {
             <button
               type="button"
               className="board-card__share board-card__share--secondary"
-              onClick={handleFarcasterShare}
+              onClick={() => handleFarcasterShare()}
               disabled={shareButtonDisabled}
             >
               Share on Farcaster
