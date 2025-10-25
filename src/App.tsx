@@ -10,7 +10,7 @@ import type { CaptureEvent } from './hooks/useChessGame'
 import { Leaderboard } from './components/Leaderboard'
 import { useLeaderboard } from './hooks/useLeaderboard'
 import { useMatchmaking } from './hooks/useMatchmaking'
-import { APP_NAME, DEFAULT_CAPTURE_CONTRACT, FARCASTER_MINIAPP_URI } from './config/constants'
+import { APP_NAME, APP_URL, DEFAULT_CAPTURE_CONTRACT, FARCASTER_MINIAPP_URI } from './config/constants'
 import { shortenHex } from './utils/strings'
 import { selectEngineMove } from './utils/chessAi'
 import { env } from './config/env'
@@ -181,8 +181,24 @@ function App() {
     availablePlayerLabels,
   } = useMatchmaking({ onOpponentMove: handleOpponentMove, playerLabel: playerProfileName })
   const botTurnColor = playerColor === 'white' ? 'b' : 'w'
-  const baseShareUrl = useMemo(() => miniAppUri, [miniAppUri])
+  const httpBaseUrl = useMemo(() => {
+    const explicit = APP_URL && APP_URL !== 'https://example.com' ? APP_URL.trim() : null
+    if (explicit && explicit.length > 0) {
+      return explicit.replace(/\/$/, '')
+    }
+    if (typeof window !== 'undefined' && window.location) {
+      const { origin, pathname } = window.location
+      return `${origin}${pathname}`.replace(/\/$/, '')
+    }
+    return 'https://example.com'
+  }, [])
+
   const buildInviteLink = useCallback(
+    (id: string) => `${httpBaseUrl}?invite=${id}` ,
+    [httpBaseUrl],
+  )
+
+  const buildMiniInviteLink = useCallback(
     (id: string) => {
       const separator = miniAppUri.includes('?') ? '&' : '?'
       return `${miniAppUri}${separator}invite=${id}`
@@ -306,13 +322,14 @@ function App() {
 
   const resolveShareUrl = useCallback(() => {
     if (matchStatus === 'inviting' && matchId) {
-      return { url: buildInviteLink(matchId), isInvite: true }
+      const miniLink = buildMiniInviteLink(matchId)
+      return { url: buildInviteLink(matchId), miniLink, isInvite: true }
     }
     if (pendingInviteId && inviteLink) {
-      return { url: inviteLink, isInvite: true }
+      return { url: inviteLink, miniLink: buildMiniInviteLink(pendingInviteId), isInvite: true }
     }
-    return { url: baseShareUrl, isInvite: false }
-  }, [baseShareUrl, buildInviteLink, inviteLink, matchId, matchStatus, pendingInviteId])
+    return { url: httpBaseUrl, miniLink: miniAppUri, isInvite: false }
+  }, [buildInviteLink, buildMiniInviteLink, httpBaseUrl, inviteLink, matchId, matchStatus, miniAppUri, pendingInviteId])
 
   const copyText = useCallback(async (value: string) => {
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
@@ -346,15 +363,16 @@ function App() {
   }, [])
 
   const handleShare = useCallback(async () => {
-    const { url: shareUrl, isInvite } = resolveShareUrl()
+    const { url: shareUrl, miniLink, isInvite } = resolveShareUrl()
     if (!hasSessionStarted && !isInvite) {
       setShareHint('Pick a mode to generate a match link.')
       return
     }
 
-    const shareText = isInvite
+    const shareTextBase = isInvite
       ? `♟️ Challenge me on ${APP_NAME}! Join my board:`
       : `♟️ Playing ${APP_NAME} on Base — take your shot!`
+    const shareText = `${shareTextBase}\n${miniLink}`
 
     try {
       if (typeof navigator !== 'undefined' && navigator.share) {
@@ -367,12 +385,12 @@ function App() {
         return
       }
 
-      if (await copyText(shareUrl)) {
-        setShareHint(isInvite ? 'Invite link copied to clipboard' : 'Game link copied to clipboard')
+      if (await copyText(miniLink)) {
+        setShareHint(isInvite ? 'Invite link copied to clipboard' : 'Miniapp link copied to clipboard')
         return
       }
 
-      setShareHint(isInvite ? `Invite link: ${shareUrl}` : `Share this link manually: ${shareUrl}`)
+      setShareHint(isInvite ? `Invite link: ${miniLink}` : `Share this link manually: ${miniLink}`)
     } catch (error) {
       console.error('share failed', error)
       setShareHint('Sharing failed — try again later')
@@ -380,18 +398,18 @@ function App() {
   }, [copyText, hasSessionStarted, resolveShareUrl])
 
   const handleCopyInvite = useCallback(async () => {
-    const { url: shareUrl, isInvite } = resolveShareUrl()
-    const copied = await copyText(shareUrl)
+    const { miniLink, isInvite } = resolveShareUrl()
+    const copied = await copyText(miniLink)
     if (copied) {
-      setShareHint(isInvite ? 'Invite link copied to clipboard' : 'Game link copied to clipboard')
+      setShareHint(isInvite ? 'Invite link copied to clipboard' : 'Miniapp link copied to clipboard')
       return
     }
-    setShareHint(isInvite ? `Invite link: ${shareUrl}` : `Copy manually: ${shareUrl}`)
+    setShareHint(isInvite ? `Invite link: ${miniLink}` : `Copy manually: ${miniLink}`)
   }, [copyText, resolveShareUrl])
 
   const handleFarcasterShare = useCallback(
     (friendHandles?: string | string[]) => {
-      const { url: shareUrl, isInvite } = resolveShareUrl()
+      const { miniLink, isInvite } = resolveShareUrl()
       const shareLine = isInvite
         ? `♟️ Challenge me on ${APP_NAME}!`
         : `♟️ Playing ${APP_NAME} on Base — take your shot!`
@@ -410,7 +428,7 @@ function App() {
       if (mentionLine) {
         textParts.push(mentionLine)
       }
-      textParts.push(shareUrl)
+      textParts.push(miniLink)
       composeUrl.searchParams.set('text', textParts.join('\n'))
       openUrl(composeUrl.toString())
       setShareHint(
@@ -1235,7 +1253,7 @@ function App() {
             {waitingMessage ? <p>{waitingMessage}</p> : null}
             {matchStatus === 'inviting' && inviteLink ? (
               <div className="board-card__invite">
-                <code>{inviteLink}</code>
+                <code>{matchId ? buildMiniInviteLink(matchId) : pendingInviteId ? buildMiniInviteLink(pendingInviteId) : miniAppUri}</code>
                 <div className="board-card__invite-actions flex flex-col gap-2 md:flex-row">
                   <button
                     type="button"
