@@ -35,6 +35,19 @@ body {
   overflow: visible;
 }
 
+.app--board-expanded {
+  align-items: stretch;
+}
+
+.app__container--board {
+  width: 100%;
+  max-width: none;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: clamp(16px, 4vw, 32px);
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
 @media (max-width: 480px) {
   .app__container {
     width: 94vw;
@@ -514,37 +527,21 @@ body {
 }
 
 .board-card__board {
-  width: min(92vw, 640px);
+  width: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
   position: relative;
-  aspect-ratio: 1 / 1;
-  max-height: min(78vh, 720px);
-  margin: 0 auto;
-  flex: 0 0 auto;
+  margin: 0;
+  flex: 1 1 auto;
+  min-height: 0;
   touch-action: none;
   overscroll-behavior: contain;
 }
 
-@media (min-width: 768px) {
-  .board-card__board {
-    width: min(640px, 100%);
-  }
-}
-
 @media (max-width: 540px) {
-  .board-card__board {
-    width: min(88vw, 460px);
-    max-height: min(72vh, 460px);
-  }
-
   .player-strip {
     padding: 10px 14px;
-  }
-
-  .board-card__controls {
-    grid-template-columns: 1fr;
   }
 }
 
@@ -678,14 +675,17 @@ body {
 }
 
 .board-card__controls {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  align-items: stretch;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  align-items: center;
+  margin-top: clamp(16px, 2vh, 28px);
 }
 
 .board-card__controls button {
-  width: 100%;
+  min-width: 120px;
+  width: auto;
   padding: 8px 12px;
   border-radius: 14px;
   border: 1px solid rgba(168, 85, 247, 0.35);
@@ -695,12 +695,6 @@ body {
   font-weight: 600;
   cursor: pointer;
   transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
-}
-
-@media (max-width: 360px) {
-  .board-card__controls {
-    grid-template-columns: 1fr;
-  }
 }
 
 .board-card__controls .board-card__share {
@@ -730,6 +724,39 @@ body {
 
 .board-card__controls .board-card__share:disabled {
   opacity: 0.55;
+}
+
+.app__container--board .board-card {
+  max-width: none;
+}
+
+.app__container--board .board-card__controls {
+  width: min(100%, 560px);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.app__container--board .board-card__controls button {
+  min-width: 110px;
+}
+
+@media (max-width: 720px) {
+  .board-card__controls {
+    gap: 8px;
+  }
+}
+
+@media (max-width: 540px) {
+  .board-card__controls button {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .board-card__controls button {
+    flex: 1 1 100%;
+  }
 }
 
 .board-card__note {

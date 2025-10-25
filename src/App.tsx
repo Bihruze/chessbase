@@ -980,6 +980,8 @@ function App() {
     </section>
   )
 
+  const isBoardView = activeView === 'board'
+
   const navItems: Array<{ id: AppView; label: string; badge?: string }> = [
     { id: 'board', label: 'Board' },
     {
@@ -996,8 +998,11 @@ function App() {
   ]
 
   return (
-    <div className="app" style={containerStyle}>
-      <div className="app__container" ref={containerRef}>
+    <div className={`app${isBoardView ? ' app--board-expanded' : ''}`} style={containerStyle}>
+      <div
+        className={`app__container${isBoardView ? ' app__container--board' : ''}`}
+        ref={containerRef}
+      >
         <header className="app__header" ref={headerRef}>
           <div className="app__title">
             <span className="app__logo" aria-hidden="true">♞</span>
