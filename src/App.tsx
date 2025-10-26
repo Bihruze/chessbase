@@ -825,48 +825,54 @@ function App() {
 
   const lobbyPanel = (
     <section className="board-card lobby-card" aria-label="Match setup">
-      <div className="lobby-card__content">
-        <span className="lobby-card__eyebrow">Choose a mode</span>
-        <h2>Battle Base players or challenge the bot.</h2>
-        <p>Pick how you want to start your next chess session.</p>
-        <div className="board-card__starter-actions">
-          <button
-            type="button"
-            onClick={handleBeginQuickMatch}
-            className="board-card__starter-button"
-            disabled={matchStatus === 'searching' || matchStatus === 'joining'}
-          >
+      <div className="lobby-card__layout">
+        <div className="lobby-card__content">
+          <span className="lobby-card__eyebrow">Choose a mode</span>
+          <h2>Battle Base players or challenge the bot.</h2>
+          <p>Pick how you want to start your next chess session.</p>
+          <div className="board-card__starter-actions">
+            <button
+              type="button"
+              onClick={handleBeginQuickMatch}
+              className="board-card__starter-button"
+              disabled={matchStatus === 'searching' || matchStatus === 'joining'}
+            >
+              {availableMatches > 0
+                ? `Join active player (${availableMatches})`
+                : 'Join active player'}
+            </button>
+            <button
+              type="button"
+              onClick={handleBeginBotMatch}
+              className="board-card__starter-button"
+            >
+              Play Base Bot
+            </button>
+          </div>
+          <p className="lobby-card__note">
             {availableMatches > 0
-              ? `Join active player (${availableMatches})`
-              : 'Join active player'}
-          </button>
-          <button
-            type="button"
-            onClick={handleBeginBotMatch}
-            className="board-card__starter-button"
-          >
-            Play Base Bot
-          </button>
+              ? `Ready players waiting: ${availableMatches}. Jump in and claim white or black.`
+              : 'Queue up to find a live opponent or warm up against the Base Bot.'}
+          </p>
+          <div className="lobby-card__list" aria-live="polite">
+            {availablePlayerLabels.length > 0 ? (
+              <>
+                <span className="lobby-card__list-title">Active players</span>
+                <ul>
+                  {availablePlayerLabels.map((label, index) => (
+                    <li key={`${label}-${index}`}>{label}</li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <span className="lobby-card__list-empty">No live players in queue yet.</span>
+            )}
+          </div>
         </div>
-        <p className="lobby-card__note">
-          {availableMatches > 0
-            ? `Ready players waiting: ${availableMatches}. Jump in and claim white or black.`
-            : 'Queue up to find a live opponent or warm up against the Base Bot.'}
-        </p>
-        <div className="lobby-card__list" aria-live="polite">
-          {availablePlayerLabels.length > 0 ? (
-            <>
-              <span className="lobby-card__list-title">Active players</span>
-              <ul>
-                {availablePlayerLabels.map((label, index) => (
-                  <li key={`${label}-${index}`}>{label}</li>
-                ))}
-              </ul>
-            </>
-          ) : (
-            <span className="lobby-card__list-empty">No live players in queue yet.</span>
-          )}
-        </div>
+        <aside className="leaderboard-block lobby-card__leaderboard" aria-label="Leaderboard snapshot">
+          <h3 className="leaderboard-block__title">Leaderboard</h3>
+          <Leaderboard entries={leaderboard} variant="embedded" />
+        </aside>
       </div>
     </section>
   )
