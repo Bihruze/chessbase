@@ -325,7 +325,19 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: clamp(96px, 18vh, 140px) clamp(14px, 4vw, 32px);
+  padding: clamp(16px, 4vw, 28px);
+}
+
+.board-card__surface {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(12px, 3vh, 20px);
+  width: 100%;
+  max-width: min(100%, 560px);
+  margin: 0 auto;
+  padding: clamp(104px, 20vh, 136px) clamp(16px, 4vw, 28px) clamp(108px, 20vh, 140px);
 }
 
 .lobby-card {
@@ -600,10 +612,18 @@ body {
     flex-direction: column;
     align-items: stretch;
     justify-content: flex-start;
-    gap: clamp(18px, 4vh, 24px);
-    padding: clamp(32px, 9vh, 56px) clamp(16px, 6vw, 24px);
-    max-width: 420px;
+    gap: clamp(16px, 4vh, 24px);
+    padding: clamp(16px, 4vh, 24px) clamp(12px, 6vw, 24px);
+    max-width: 460px;
     margin: 0 auto;
+  }
+
+  .board-card__surface {
+    order: 1;
+    max-width: 100%;
+    width: 100%;
+    padding: 0;
+    gap: clamp(12px, 3vh, 18px);
   }
 
   .player-strip--overlay {
@@ -767,7 +787,7 @@ body {
   justify-content: center;
   gap: 10px;
   align-items: center;
-  margin-top: clamp(16px, 2vh, 28px);
+  margin-top: clamp(12px, 2vh, 16px);
 }
 
 .board-card__controls button {
@@ -834,10 +854,6 @@ body {
 }
 
 @media (max-width: 540px) {
-  .board-card__stage {
-    padding: clamp(80px, 16vh, 110px) clamp(10px, 3vw, 20px);
-  }
-
   .board-card__controls button {
     flex: 1 1 calc(50% - 8px);
     min-width: 0;
@@ -846,10 +862,6 @@ body {
 }
 
 @media (max-width: 360px) {
-  .board-card__stage {
-    padding: clamp(72px, 22vh, 96px) clamp(8px, 3vw, 16px);
-  }
-
   .board-card__controls button {
     flex: 1 1 100%;
   }
@@ -1299,12 +1311,23 @@ body {
 }
 
 .bot-difficulty {
+  position: relative;
   display: flex;
   justify-content: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin: 16px auto 12px;
-  width: min(100%, 360px);
+  align-items: center;
+  gap: 12px;
+  flex-wrap: nowrap;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 0 clamp(8px, 2vw, 12px);
+  overflow-x: auto;
+  scrollbar-width: none;
+  z-index: 6;
+}
+
+.bot-difficulty::-webkit-scrollbar {
+  display: none;
 }
 
 .bot-difficulty__option {
@@ -1317,6 +1340,12 @@ body {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.bot-difficulty__option:focus-visible {
+  outline: 2px solid rgba(168, 85, 247, 0.85);
+  outline-offset: 3px;
 }
 
 .bot-difficulty__option:hover {
@@ -1328,4 +1357,5 @@ body {
   background: linear-gradient(135deg, rgba(129, 140, 248, 0.85), rgba(168, 85, 247, 0.85));
   color: #fdf4ff;
   border-color: rgba(168, 85, 247, 0.6);
+  box-shadow: 0 0 0 1px rgba(236, 233, 255, 0.12), 0 12px 22px rgba(168, 85, 247, 0.28);
 }

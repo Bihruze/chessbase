@@ -888,41 +888,59 @@ function App() {
           </div>
         </div>
 
-        <div
-          className={`board-card__board${canPlay ? '' : ' board-card__board--locked'}`}
-          ref={boardContainerRef}
-        >
-          <Chessboard options={chessboardOptions} />
-          {isAwaitingMatch ? (
-            <div className="board-card__starter" role="status">
-              <span className="board-card__starter-eyebrow">
-                {matchStatus === 'searching' ? 'Matchmaking' : 'Connecting'}
-              </span>
-              <h3>
-                {matchStatus === 'searching'
-                  ? 'Looking for another Base player…'
-                  : 'Joining the board…'}
-              </h3>
-              {waitingMessage ? <p>{waitingMessage}</p> : null}
-              {matchStatus === 'searching' && availablePlayerLabels.length > 0 ? (
-                <div className="board-card__queue">
-                  <span className="board-card__queue-title">Players ready right now</span>
-                  <ul>
-                    {availablePlayerLabels.map((label, index) => (
-                      <li key={`${label}-${index}`}>{label}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              <button
-                type="button"
-                onClick={handleCancelMatch}
-                className="board-card__starter-cancel"
-              >
-                Cancel
-              </button>
+        <div className="board-card__surface">
+          {opponentType === 'bot' ? (
+            <div className="bot-difficulty" role="group" aria-label="Bot difficulty">
+              {(['easy', 'medium', 'hard'] as const).map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  className={`bot-difficulty__option${botDifficulty === level ? ' bot-difficulty__option--active' : ''}`}
+                  onClick={() => setBotDifficulty(level)}
+                  aria-pressed={botDifficulty === level}
+                >
+                  {level.charAt(0).toUpperCase() + level.slice(1)}
+                </button>
+              ))}
             </div>
           ) : null}
+
+          <div
+            className={`board-card__board${canPlay ? '' : ' board-card__board--locked'}`}
+            ref={boardContainerRef}
+          >
+            <Chessboard options={chessboardOptions} />
+            {isAwaitingMatch ? (
+              <div className="board-card__starter" role="status">
+                <span className="board-card__starter-eyebrow">
+                  {matchStatus === 'searching' ? 'Matchmaking' : 'Connecting'}
+                </span>
+                <h3>
+                  {matchStatus === 'searching'
+                    ? 'Looking for another Base player…'
+                    : 'Joining the board…'}
+                </h3>
+                {waitingMessage ? <p>{waitingMessage}</p> : null}
+                {matchStatus === 'searching' && availablePlayerLabels.length > 0 ? (
+                  <div className="board-card__queue">
+                    <span className="board-card__queue-title">Players ready right now</span>
+                    <ul>
+                      {availablePlayerLabels.map((label, index) => (
+                        <li key={`${label}-${index}`}>{label}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handleCancelMatch}
+                  className="board-card__starter-cancel"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <div className="player-strip player-strip--overlay player-strip--bottom" ref={bottomPlayerStripRef}>
@@ -939,22 +957,6 @@ function App() {
           </div>
         </div>
       </div>
-
-      {opponentType === 'bot' ? (
-        <div className="bot-difficulty" role="group" aria-label="Bot difficulty">
-          {(['easy', 'medium', 'hard'] as const).map((level) => (
-            <button
-              key={level}
-              type="button"
-              className={`bot-difficulty__option${botDifficulty === level ? ' bot-difficulty__option--active' : ''}`}
-              onClick={() => setBotDifficulty(level)}
-              aria-pressed={botDifficulty === level}
-            >
-              {level.charAt(0).toUpperCase() + level.slice(1)}
-            </button>
-          ))}
-        </div>
-      ) : null}
 
       <div className="board-card__controls" role="group" aria-label="Board actions" ref={boardControlsRef}>
         <button type="button" onClick={handleNewGame}>
