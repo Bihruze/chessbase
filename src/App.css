@@ -598,17 +598,18 @@ body {
 @media (max-width: 640px) {
   .board-card__stage {
     flex-direction: column;
-    align-items: center;
+    align-items: stretch;
     justify-content: flex-start;
-    gap: 16px;
-    padding: clamp(72px, 16vh, 108px) clamp(12px, 4vw, 24px);
+    gap: clamp(18px, 4vh, 24px);
+    padding: clamp(32px, 9vh, 56px) clamp(16px, 6vw, 24px);
+    max-width: 420px;
+    margin: 0 auto;
   }
 
   .player-strip--overlay {
     position: static;
     transform: none;
     width: 100%;
-    max-width: 360px;
   }
 
   .player-strip--bottom {
@@ -616,8 +617,18 @@ body {
   }
 
   .board-card__board {
-    max-width: 100%;
     flex: 0 0 auto;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .player-strip {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .player-strip__captures {
+    justify-content: flex-start;
   }
 }
 
