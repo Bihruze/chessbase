@@ -16,6 +16,7 @@ import { selectEngineMove } from './utils/chessAi'
 import { env } from './config/env'
 import { preferredChain } from './lib/wagmi'
 import './App.css'
+import './theme.css'
 import { WalletControls } from './components/WalletControls'
 import { chessBaseCapturesAbi } from './abi/chessBaseCaptures'
 
@@ -217,7 +218,8 @@ function App() {
     setActiveView('board')
   }, [resetBoardState, startBotMatch])
 
-  const canPlay = matchStatus === 'matched' || matchStatus === 'bot'
+  const canPlay = matchStatus !== 'searching' && matchStatus !== 'joining'
+  const isPracticeSession = matchStatus === 'idle' || matchStatus === 'inviting'
   const isAwaitingMatch = matchStatus === 'searching' || matchStatus === 'joining'
   const handleCancelMatch = useCallback(() => {
     cancelMatchmaking('user-cancel')
@@ -321,21 +323,22 @@ function App() {
   const handlePlayerDrop = useCallback(
     (args: PieceDropHandlerArgs) => {
       clearMoveHints()
-      if (matchStatus !== 'matched' && matchStatus !== 'bot') {
+      if (matchStatus === 'searching' || matchStatus === 'joining') {
         return false
       }
 
+      const practiceMode = matchStatus === 'idle' || matchStatus === 'inviting'
       const pieceCode = args.piece?.pieceType ?? ''
       if (!pieceCode) {
         return false
       }
       const pieceColor = pieceCode.startsWith('w') ? 'white' : 'black'
-      if (pieceColor !== playerColor) {
+      if (!practiceMode && pieceColor !== playerColor) {
         return false
       }
 
       const turnColor = turn === 'w' ? 'white' : 'black'
-      if (turnColor !== playerColor) {
+      if (!practiceMode && turnColor !== playerColor) {
         return false
       }
 
@@ -368,7 +371,7 @@ function App() {
         return false
       }
       const moveColor = legalMove.color === 'w' ? 'white' : 'black'
-      if (moveColor !== playerColor) {
+      if (!isPracticeSession && moveColor !== playerColor) {
         return false
       }
       const pieceType = `${legalMove.color}${legalMove.piece.toUpperCase()}`
@@ -382,7 +385,7 @@ function App() {
         targetSquare: toSquare,
       })
     },
-    [getLegalMoves, handlePlayerDrop, playerColor],
+    [getLegalMoves, handlePlayerDrop, isPracticeSession, playerColor],
   )
 
   const handleSquareClick = useCallback(
@@ -824,84 +827,89 @@ function App() {
   }
 
   const lobbyPanel = (
-    <section className="board-card lobby-card" aria-label="Match setup">
-      <div className="lobby-card__layout">
-        <div className="lobby-card__content">
-          <span className="lobby-card__eyebrow">Choose a mode</span>
-          <h2>Battle Base players or challenge the bot.</h2>
-          <p>Pick how you want to start your next chess session.</p>
-          <div className="board-card__starter-actions">
-            <button
-              type="button"
-              onClick={handleBeginQuickMatch}
-              className="board-card__starter-button"
-              disabled={matchStatus === 'searching' || matchStatus === 'joining'}
-            >
-              {availableMatches > 0
-                ? `Join active player (${availableMatches})`
-                : 'Join active player'}
-            </button>
-            <button
-              type="button"
-              onClick={handleBeginBotMatch}
-              className="board-card__starter-button"
-            >
-              Play Base Bot
-            </button>
-          </div>
-          <p className="lobby-card__note">
-            {availableMatches > 0
-              ? `Ready players waiting: ${availableMatches}. Jump in and claim white or black.`
-              : 'Queue up to find a live opponent or warm up against the Base Bot.'}
-          </p>
-          <div className="lobby-card__list" aria-live="polite">
-            {availablePlayerLabels.length > 0 ? (
-              <>
-                <span className="lobby-card__list-title">Active players</span>
-                <ul>
-                  {availablePlayerLabels.map((label, index) => (
-                    <li key={`${label}-${index}`}>{label}</li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <span className="lobby-card__list-empty">No live players in queue yet.</span>
-            )}
-          </div>
+    <section className="lobby-view" aria-label="Match setup">
+      <div className="lobby-header">
+        <div className="lobby-header__title">
+          ✨ ChessBase ✨
         </div>
-        <aside className="leaderboard-block lobby-card__leaderboard" aria-label="Leaderboard snapshot">
-          <h3 className="leaderboard-block__title">Leaderboard</h3>
-          <Leaderboard entries={leaderboard} variant="embedded" />
-        </aside>
+        <p className="lobby-header__subtitle">
+          Play lightning-fast matches on Base, or sharpen your skills against the AI.
+        </p>
       </div>
-    </section>
-  )
 
-  const boardPanel = (
-    <section className="board-card board-card--full" aria-label="Chess board">
-      <div className="board-card__stage">
-        <div className="player-strip player-strip--overlay player-strip--top" ref={topPlayerStripRef}>
-          <div className="player-strip__info">
-            <span className="player-strip__label">{opponentColorLabel}</span>
-            <h2 className="player-strip__name">{opponentDisplayName}</h2>
-          </div>
-          <div className="player-strip__captures" aria-label="Pieces captured by opponent">
-            {captureSummary.opponentIcons.length ? (
-              captureSummary.opponentIcons
-            ) : (
-              <span className="player-strip__empty">No captures yet</span>
-            )}
-          </div>
+      <div className="wallet-panel">
+        <div className="glass-card wallet-card">
+          <WalletControls />
         </div>
+      </div>
 
-        <div className="board-card__surface">
-          {opponentType === 'bot' ? (
+      <div className="stat-highlight glass-panel" aria-live="polite">
+        <div>
+          <span className="text-sm text-violet-200/80">Ready players</span>
+          <div className="text-2xl font-semibold">{availableMatches}</div>
+        </div>
+        <div>
+          <span className="text-sm text-violet-200/80">Queue status</span>
+          <div className="text-lg">{matchStatus === 'searching' ? 'Matching…' : 'Standby'}</div>
+        </div>
+        <div>
+          <span className="text-sm text-violet-200/80">Leaderboard entries</span>
+          <div className="text-lg">{leaderboard.length}</div>
+        </div>
+      </div>
+
+      <div className="lobby-actions">
+        <button
+          type="button"
+          onClick={handleBeginQuickMatch}
+          className="action-card"
+          disabled={matchStatus === 'searching' || matchStatus === 'joining'}
+        >
+          <div className="action-card__header">
+            <div>
+              <div className="action-card__title">Quick match</div>
+              <div className="action-card__meta">Battle a live Base player</div>
+            </div>
+            <span className="pill-chip">⚔️ PVP</span>
+          </div>
+          <p className="text-sm text-violet-200/80">
+            {availableMatches > 0
+              ? `Players in queue: ${availablePlayerLabels.slice(0, 3).join(', ')}`
+              : 'No players waiting yet — be the first to join!'}
+          </p>
+          <div className="neon-button mt-auto text-center py-3 rounded-2xl text-base font-semibold">
+            {matchStatus === 'searching'
+              ? 'Searching for opponent…'
+              : availableMatches > 0
+              ? `Join match (${availableMatches})`
+              : 'Start matchmaking'}
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleBeginBotMatch}
+          className="action-card"
+        >
+          <div className="action-card__header">
+            <div>
+              <div className="action-card__title">Base Bot</div>
+              <div className="action-card__meta">Warm up against the AI</div>
+            </div>
+            <span className="pill-chip pill-chip-active text-sm">
+              {botDifficulty.charAt(0).toUpperCase() + botDifficulty.slice(1)}
+            </span>
+          </div>
+          <p className="text-sm text-violet-200/80">
+            Choose your challenge level and keep your tactics sharp.
+          </p>
+          <div className="difficulty-row">
             <div className="bot-difficulty" role="group" aria-label="Bot difficulty">
               {(['easy', 'medium', 'hard'] as const).map((level) => (
                 <button
                   key={level}
                   type="button"
-                  className={`bot-difficulty__option${botDifficulty === level ? ' bot-difficulty__option--active' : ''}`}
+                  className={`bot-difficulty__option pill-chip${botDifficulty === level ? ' pill-chip-active' : ''}`}
                   onClick={() => setBotDifficulty(level)}
                   aria-pressed={botDifficulty === level}
                 >
@@ -909,95 +917,41 @@ function App() {
                 </button>
               ))}
             </div>
-          ) : null}
-
-          <div
-            className={`board-card__board${canPlay ? '' : ' board-card__board--locked'}`}
-            ref={boardContainerRef}
-          >
-            <Chessboard options={chessboardOptions} />
-            {isAwaitingMatch ? (
-              <div className="board-card__starter" role="status">
-                <span className="board-card__starter-eyebrow">
-                  {matchStatus === 'searching' ? 'Matchmaking' : 'Connecting'}
-                </span>
-                <h3>
-                  {matchStatus === 'searching'
-                    ? 'Looking for another Base player…'
-                    : 'Joining the board…'}
-                </h3>
-                {waitingMessage ? <p>{waitingMessage}</p> : null}
-                {matchStatus === 'searching' && availablePlayerLabels.length > 0 ? (
-                  <div className="board-card__queue">
-                    <span className="board-card__queue-title">Players ready right now</span>
-                    <ul>
-                      {availablePlayerLabels.map((label, index) => (
-                        <li key={`${label}-${index}`}>{label}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={handleCancelMatch}
-                  className="board-card__starter-cancel"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : null}
           </div>
-        </div>
-
-        <div className="player-strip player-strip--overlay player-strip--bottom" ref={bottomPlayerStripRef}>
-          <div>
-            <span className="player-strip__label">{playerColorLabel}</span>
-            <h2 className="player-strip__name">{userDisplayName}</h2>
+          <div className="neon-button mt-auto text-center py-3 rounded-2xl text-base font-semibold">
+            Start bot match
           </div>
-          <div className="player-strip__captures" aria-label="Pieces captured by you">
-            {captureSummary.playerIcons.length ? (
-              captureSummary.playerIcons
-            ) : (
-              <span className="player-strip__empty">Take your first piece</span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="board-card__controls" role="group" aria-label="Board actions" ref={boardControlsRef}>
-        <button type="button" onClick={handleNewGame}>
-          New game
         </button>
-        {hasSessionStarted ? (
-          <>
-            <button type="button" onClick={undoMove} disabled={!history.length}>
-              Undo move
-            </button>
-            <button type="button" onClick={toggleOrientation}>
-              Flip board
-            </button>
-            <button type="button" onClick={handleBackToLobby}>
-              Back
-            </button>
-          </>
-        ) : null}
       </div>
-      {mateBanner ? (
-        <div
-          className={`board-card__banner board-card__banner--${mateBanner.variant}`}
-          role="status"
-        >
-          {mateBanner.text}
-        </div>
-      ) : null}
 
-      <p className="board-card__note" aria-live="polite">
-        {lastCaptureCopy}
-      </p>
+      <div className="glass-card">
+        <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+          <span>👥</span> Active players
+        </h3>
+        {availablePlayerLabels.length > 0 ? (
+          <ul className="panel-list">
+            {availablePlayerLabels.map((label, index) => (
+              <li key={`${label}-${index}`} className="panel-list__item">
+                <span className="panel-list__bullet">•</span>
+                {label}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-violet-200/80">No live players in queue yet.</p>
+        )}
+      </div>
+
+      <div className="glass-card">
+        <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+          <span>🏆</span> Leaderboard snapshot
+        </h3>
+        <Leaderboard entries={leaderboard} variant="embedded" />
+      </div>
     </section>
   )
 
-  const movesPanel = (
+  const renderMovesPanel = () => (
     <section className="timeline timeline--page" aria-label="Move log">
       <h2>Move log</h2>
       <table>
@@ -1029,7 +983,7 @@ function App() {
     </section>
   )
 
-  const capturesPanel = (
+  const renderCapturesPanel = () => (
     <section className="ledger ledger--page" aria-label="Capture ledger">
       <div className="ledger__header">
         <h2>Capture ledger</h2>
@@ -1064,10 +1018,123 @@ function App() {
     </section>
   )
 
-  const leaderboardPanel = (
+  const renderLeaderboardPanel = () => (
     <section className="leaderboard-panel" aria-label="Leaderboard">
       <h2>Current standings</h2>
       <Leaderboard entries={leaderboard} variant="embedded" />
+    </section>
+  )
+
+  const boardPanel = (
+    <section className="board-layout" aria-label="Chess board">
+      <div className="board-layout__main">
+        <div className="glass-card board-shell">
+          <div className="player-strip player-strip--overlay player-strip--top" ref={topPlayerStripRef}>
+            <div className="player-strip__info">
+              <span className="player-strip__label">{opponentColorLabel}</span>
+              <h2 className="player-strip__name">{opponentDisplayName}</h2>
+            </div>
+            <div className="player-strip__captures" aria-label="Pieces captured by opponent">
+              {captureSummary.opponentIcons.length ? (
+                captureSummary.opponentIcons
+              ) : (
+                <span className="player-strip__empty">No captures yet</span>
+              )}
+            </div>
+          </div>
+
+          <div className="board-card__surface">
+            <div
+              className={`board-card__board${canPlay ? '' : ' board-card__board--locked'}`}
+              ref={boardContainerRef}
+            >
+              <Chessboard options={chessboardOptions} />
+              {isAwaitingMatch ? (
+                <div className="board-card__starter" role="status">
+                  <span className="board-card__starter-eyebrow">
+                    {matchStatus === 'searching' ? 'Matchmaking' : 'Connecting'}
+                  </span>
+                  <h3>
+                    {matchStatus === 'searching'
+                      ? 'Looking for another Base player…'
+                      : 'Joining the board…'}
+                  </h3>
+                  {waitingMessage ? <p>{waitingMessage}</p> : null}
+                  {matchStatus === 'searching' && availablePlayerLabels.length > 0 ? (
+                    <div className="board-card__queue">
+                      <span className="board-card__queue-title">Players ready right now</span>
+                      <ul>
+                        {availablePlayerLabels.map((label, index) => (
+                          <li key={`${label}-${index}`}>{label}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={handleCancelMatch}
+                    className="board-card__starter-cancel"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="player-strip player-strip--overlay player-strip--bottom" ref={bottomPlayerStripRef}>
+            <div>
+              <span className="player-strip__label">{playerColorLabel}</span>
+              <h2 className="player-strip__name">{userDisplayName}</h2>
+            </div>
+            <div className="player-strip__captures" aria-label="Pieces captured by you">
+              {captureSummary.playerIcons.length ? (
+                captureSummary.playerIcons
+              ) : (
+                <span className="player-strip__empty">Take your first piece</span>
+              )}
+            </div>
+          </div>
+
+          <div className="board-card__controls glass-panel" role="group" aria-label="Board actions" ref={boardControlsRef}>
+            <button type="button" className="neon-button" onClick={handleNewGame}>
+              New game
+            </button>
+            {hasSessionStarted ? (
+              <>
+                <button type="button" className="glass-panel" onClick={undoMove} disabled={!history.length}>
+                  Undo move
+                </button>
+                <button type="button" className="glass-panel" onClick={toggleOrientation}>
+                  Flip board
+                </button>
+                <button type="button" className="glass-panel" onClick={handleBackToLobby}>
+                  Back
+                </button>
+              </>
+            ) : null}
+          </div>
+
+          {mateBanner ? (
+            <div
+              className={`status-banner board-card__banner board-card__banner--${mateBanner.variant} status-banner--${mateBanner.variant === 'win' ? 'win' : mateBanner.variant === 'loss' ? 'loss' : 'draw'}`}
+              role="status"
+            >
+              {mateBanner.text}
+            </div>
+          ) : null}
+
+          <p className="board-card__note" aria-live="polite">
+            {lastCaptureCopy}
+          </p>
+        </div>
+      </div>
+
+      <aside className="board-layout__side">
+        <div className="glass-panel panel-stack__item">{renderMovesPanel()}</div>
+        <div className="glass-panel panel-stack__item">{renderCapturesPanel()}</div>
+        <div className="glass-panel panel-stack__item">{renderLeaderboardPanel()}</div>
+      </aside>
     </section>
   )
 
@@ -1087,44 +1154,52 @@ function App() {
   ]
 
   return (
-    <div className={`app${isBoardView ? ' app--board-expanded' : ''}`} style={containerStyle}>
-      <div
-        className={`app__container${isBoardView ? ' app__container--board' : ''}`}
-        ref={containerRef}
-      >
-        <header className="app__header" ref={headerRef}>
-          <div className="app__title">
-            <span className="app__logo" aria-hidden="true">♞</span>
-            <h1>{APP_NAME}</h1>
-          </div>
-          <div className="app__header-wallet">
-            <WalletControls />
-          </div>
-        </header>
+    <div className="app-shell" style={containerStyle} ref={containerRef}>
+      {hasSessionStarted ? (
+        <>
+          <header className="glass-card board-header" ref={headerRef}>
+            <div className="board-header__title">♞ {APP_NAME}</div>
+            <div className="board-header__wallet">
+              <WalletControls />
+            </div>
+          </header>
 
-        {hasSessionStarted ? (
-          <nav className="app__nav" aria-label="App sections" ref={navRef}>
+          <nav className="glass-panel board-nav" aria-label="App sections" ref={navRef}>
             {navItems.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                className={`app__nav-button${activeView === item.id ? ' app__nav-button--active' : ''}`}
+                className={`board-nav__button${activeView === item.id ? ' board-nav__button--active' : ''}`}
                 onClick={() => setActiveView(item.id)}
                 aria-current={activeView === item.id ? 'page' : undefined}
               >
-                <span className="app__nav-label">{item.label}</span>
-                {item.badge ? <span className="app__nav-badge">{item.badge}</span> : null}
+                <span>{item.label}</span>
+                {item.badge ? <span className="board-nav__badge">{item.badge}</span> : null}
               </button>
             ))}
           </nav>
-        ) : null}
 
-        {activeView === 'lobby' ? lobbyPanel : null}
-        {activeView === 'board' ? boardPanel : null}
-        {activeView === 'moves' ? movesPanel : null}
-        {activeView === 'captures' ? capturesPanel : null}
-        {activeView === 'leaderboard' ? leaderboardPanel : null}
-      </div>
+          {activeView === 'board' ? boardPanel : null}
+          {activeView === 'moves' ? (
+            <div className="glass-panel standalone-panel" aria-label="Move history">
+              {renderMovesPanel()}
+            </div>
+          ) : null}
+          {activeView === 'captures' ? (
+            <div className="glass-panel standalone-panel" aria-label="Capture ledger">
+              {renderCapturesPanel()}
+            </div>
+          ) : null}
+          {activeView === 'leaderboard' ? (
+            <div className="glass-panel standalone-panel" aria-label="Leaderboard">
+              {renderLeaderboardPanel()}
+            </div>
+          ) : null}
+        </>
+      ) : (
+        lobbyPanel
+      )}
+
       {pendingCapture && address && (
         <CaptureTransactionPanel
           capture={pendingCapture}
