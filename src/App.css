@@ -323,11 +323,9 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: clamp(16px, 3vh, 24px);
-  padding: clamp(56px, 16vh, 88px) clamp(14px, 4vw, 32px);
+  padding: clamp(96px, 18vh, 140px) clamp(14px, 4vw, 32px);
 }
 
 .lobby-card {
@@ -562,28 +560,30 @@ body {
 }
 
 .player-strip--overlay {
-  width: min(100%, 560px);
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(92vw, 560px);
   z-index: 5;
   pointer-events: auto;
 }
 
 .player-strip--top {
-  order: 0;
+  top: clamp(16px, 4vh, 32px);
 }
 
 .player-strip--bottom {
-  order: 2;
+  bottom: clamp(16px, 4vh, 32px);
 }
 
 .board-card__board {
   width: 100%;
-  max-width: min(100%, 560px);
   display: flex;
   justify-content: center;
   align-items: center;
   position: relative;
-  margin: 0 auto;
-  flex: 0 1 auto;
+  margin: 0;
+  flex: 1 1 auto;
   min-height: 0;
   touch-action: none;
   overscroll-behavior: contain;
@@ -1291,31 +1291,4 @@ body {
   background: linear-gradient(135deg, rgba(129, 140, 248, 0.85), rgba(168, 85, 247, 0.85));
   color: #fdf4ff;
   border-color: rgba(168, 85, 247, 0.6);
-}
-
-@media (min-width: 960px) {
-  .board-card__stage {
-    gap: 0;
-    padding: clamp(96px, 18vh, 140px) clamp(14px, 4vw, 32px);
-  }
-
-  .player-strip--overlay {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    width: min(92vw, 560px);
-  }
-
-  .player-strip--top {
-    top: clamp(16px, 4vh, 32px);
-  }
-
-  .player-strip--bottom {
-    bottom: clamp(16px, 4vh, 32px);
-  }
-
-  .board-card__board {
-    flex: 1 1 auto;
-    margin: 0;
-  }
 }
